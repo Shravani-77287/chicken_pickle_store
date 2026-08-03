@@ -21,6 +21,7 @@ import {
   CheckCircle2,
   Loader2,
   Check,
+  Tag,
 } from 'lucide-react';
 
 function CartDrawer() {
@@ -37,6 +38,12 @@ function CartDrawer() {
   const [showAddressModal, setShowAddressModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState(false);
+
+  // Coupon States
+  const [couponCode, setCouponCode] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState(null);
+  const [couponLoading, setCouponLoading] = useState(false);
+  const [couponError, setCouponError] = useState('');
 
   const [customer, setCustomer] = useState({
     name: 'Shravani',
@@ -66,8 +73,40 @@ function CartDrawer() {
   const deliveryCharge = isFreeDelivery ? 0 : 30;
   const deliverySavings = isFreeDelivery && items.length > 0 ? 30 : 0;
 
-  const grandTotal = itemsTotal + deliveryCharge + handlingCharge;
-  const totalSavings = itemSavings + deliverySavings;
+  // Coupon Discount Calculations
+  const couponDiscount = appliedCoupon ? appliedCoupon.discountAmount : 0;
+  const grandTotal = Math.max(0, itemsTotal - couponDiscount + deliveryCharge + handlingCharge);
+  const totalSavings = itemSavings + deliverySavings + couponDiscount;
+
+  // Apply Coupon Handler
+  const handleApplyCoupon = async (e) => {
+    e.preventDefault();
+    if (!couponCode.trim()) return;
+
+    setCouponLoading(true);
+    setCouponError('');
+
+    try {
+      const res = await API.post('/coupons/apply', {
+        code: couponCode,
+        itemsTotal,
+      });
+      setAppliedCoupon(res.data);
+      setCouponError('');
+    } catch (err) {
+      setAppliedCoupon(null);
+      setCouponError(err.response?.data?.message || 'Invalid coupon code');
+    } finally {
+      setCouponLoading(false);
+    }
+  };
+
+  // Remove Coupon Handler
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponCode('');
+    setCouponError('');
+  };
 
   const handlePlaceOrder = async () => {
     if (items.length === 0) return;
@@ -81,14 +120,16 @@ function CartDrawer() {
           quantity: item.quantity,
           price: item.selectedVariant?.price || 0,
           weight: item.selectedVariant?.weight || 'Standard',
-          product: item._id, // 👈 PASSING REQUIRED MONGOOSE PRODUCT ID
+          product: item._id,
         })),
         itemsPrice: itemsTotal,
+        discountPrice: couponDiscount,
         shippingPrice: deliveryCharge,
         totalPrice: grandTotal,
         paymentMethod,
         deliveryInstruction: selectedInstruction,
         gstinNumber: gstin,
+        couponCode: appliedCoupon ? appliedCoupon.code : '',
       };
 
       await API.post('/orders', orderPayload);
@@ -191,6 +232,52 @@ function CartDrawer() {
               ))}
             </div>
 
+            {/* Promo / Coupon Code Input Section */}
+            <div className="bg-[#1e1e1e] p-4 rounded-2xl border border-gray-800 space-y-2">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-gray-300 flex items-center gap-1.5">
+                  <Tag size={14} className="text-amber-400" /> Apply Coupon Code
+                </h4>
+              </div>
+
+              {appliedCoupon ? (
+                <div className="bg-emerald-950/80 border border-emerald-700/80 p-3 rounded-xl flex items-center justify-between text-xs">
+                  <div>
+                    <p className="font-black text-emerald-400">{appliedCoupon.code} Applied ✅</p>
+                    <p className="text-[10px] text-emerald-200">You saved ₹{appliedCoupon.discountAmount} on this order!</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRemoveCoupon}
+                    className="text-xs text-red-400 hover:text-red-300 font-bold px-2 py-1 bg-black/40 rounded-lg"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleApplyCoupon} className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Enter Code (e.g. SPICY50)"
+                    value={couponCode}
+                    onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                    className="flex-1 text-xs p-2.5 rounded-xl bg-[#2a2a2a] border border-gray-700 text-white uppercase placeholder-gray-500 font-mono tracking-wider focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                  <button
+                    type="submit"
+                    disabled={couponLoading}
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-4 rounded-xl transition disabled:opacity-50"
+                  >
+                    {couponLoading ? 'Checking...' : 'Apply'}
+                  </button>
+                </form>
+              )}
+
+              {couponError && (
+                <p className="text-[11px] text-red-400 font-medium pt-1">{couponError}</p>
+              )}
+            </div>
+
             {/* Bill Details */}
             <div className="bg-[#1e1e1e] p-5 rounded-2xl border border-gray-800 space-y-3">
               <h3 className="text-lg font-extrabold text-white">Bill details</h3>
@@ -211,6 +298,16 @@ function CartDrawer() {
                     <span className="text-white">₹{itemsTotal}</span>
                   </div>
                 </div>
+
+                {appliedCoupon && (
+                  <div className="flex justify-between items-center text-emerald-400 font-bold">
+                    <span className="flex items-center gap-1.5">
+                      <Tag size={14} />
+                      <span className="border-b border-dashed border-emerald-600">Coupon Discount ({appliedCoupon.code})</span>
+                    </span>
+                    <span>-₹{couponDiscount}</span>
+                  </div>
+                )}
 
                 <div className="flex justify-between items-center">
                   <span className="flex items-center gap-1.5 text-gray-300">
@@ -244,7 +341,7 @@ function CartDrawer() {
                   <div>
                     <p className="font-black text-sm text-white">Your total savings</p>
                     <p className="text-[11px] text-blue-200">
-                      Includes ₹{deliverySavings} savings through free delivery
+                      Includes ₹{deliverySavings + couponDiscount} savings through free delivery & coupons
                     </p>
                   </div>
                   <span className="font-black text-lg text-white">₹{totalSavings}</span>

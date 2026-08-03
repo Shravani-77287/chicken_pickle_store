@@ -22,30 +22,37 @@ import {
   Tag,
   X,
   UserCheck,
-  Calendar,
+  Percent,
 } from 'lucide-react';
 
 export default function AdminDashboard() {
-  const [activeView, setActiveView] = useState('orders'); // 'orders' or 'products'
+  const [activeView, setActiveView] = useState('orders'); // 'orders', 'products', or 'coupons'
   const [adminProfile, setAdminProfile] = useState(null);
-  const [showAdminProfileModal, setShowAdminProfileModal] = useState(false); // 👈 Profile Modal State
+  const [showAdminProfileModal, setShowAdminProfileModal] = useState(false);
   const [orders, setOrders] = useState([]);
   const [products, setProducts] = useState([]);
+  const [coupons, setCoupons] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
   const [activeOrderTab, setActiveOrderTab] = useState('All');
 
-  // Add Product Form State
+  // Add Product State
   const [showAddModal, setShowAddModal] = useState(false);
   const [newProductName, setNewProductName] = useState('');
   const [newProductDesc, setNewProductDesc] = useState('');
   const [newProductImage, setNewProductImage] = useState('');
   const [newProductSpice, setNewProductSpice] = useState('Medium');
-
   const [origPrice250, setOrigPrice250] = useState('350');
   const [offerPrice250, setOfferPrice250] = useState('299');
   const [origPrice500, setOrigPrice500] = useState('650');
   const [offerPrice500, setOfferPrice500] = useState('549');
+
+  // Add Coupon State
+  const [showAddCouponModal, setShowAddCouponModal] = useState(false);
+  const [couponCode, setCouponCode] = useState('');
+  const [discountType, setDiscountType] = useState('FLAT');
+  const [discountValue, setDiscountValue] = useState('50');
+  const [minOrderAmount, setMinOrderAmount] = useState('299');
 
   const router = useRouter();
 
@@ -60,14 +67,16 @@ export default function AdminDashboard() {
     }
 
     try {
-      const [ordersRes, productsRes, profileRes] = await Promise.all([
+      const [ordersRes, productsRes, couponsRes, profileRes] = await Promise.all([
         API.get('/orders'),
         API.get('/products'),
+        API.get('/coupons').catch(() => ({ data: [] })),
         API.get('/auth/me').catch(() => ({ data: null })),
       ]);
 
       setOrders(ordersRes.data);
       setProducts(productsRes.data);
+      setCoupons(couponsRes.data);
       if (profileRes.data) {
         setAdminProfile(profileRes.data);
       }
@@ -156,6 +165,38 @@ export default function AdminDashboard() {
     }
   };
 
+  // CREATE NEW PROMO CODE
+  const handleAddCoupon = async (e) => {
+    e.preventDefault();
+    try {
+      await API.post('/coupons', {
+        code: couponCode,
+        discountType,
+        discountValue: Number(discountValue),
+        minOrderAmount: Number(minOrderAmount),
+      });
+
+      setShowAddCouponModal(false);
+      setCouponCode('');
+      setDiscountValue('50');
+      setMinOrderAmount('299');
+      fetchDashboardData();
+    } catch (error) {
+      alert(error.response?.data?.message || 'Failed to create promo code');
+    }
+  };
+
+  // DELETE PROMO CODE
+  const handleDeleteCoupon = async (couponId) => {
+    if (!confirm('Are you sure you want to delete this coupon?')) return;
+    try {
+      await API.delete(`/coupons/${couponId}`);
+      fetchDashboardData();
+    } catch (error) {
+      alert('Failed to delete coupon');
+    }
+  };
+
   const countByStatus = (status) => orders.filter((o) => o.status === status).length;
   const filteredOrders =
     activeOrderTab === 'All' ? orders : orders.filter((o) => o.status === activeOrderTab);
@@ -190,6 +231,14 @@ export default function AdminDashboard() {
                 >
                   Products ({products.length})
                 </button>
+                <button
+                  onClick={() => setActiveView('coupons')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    activeView === 'coupons' ? 'bg-white text-red-800 shadow-sm' : 'text-gray-600'
+                  }`}
+                >
+                  Coupons ({coupons.length})
+                </button>
               </div>
 
               <button
@@ -208,7 +257,7 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* CLICKABLE ADMIN PROFILE BANNER */}
+          {/* ADMIN PROFILE BANNER */}
           {adminProfile && (
             <div
               onClick={() => setShowAdminProfileModal(true)}
@@ -406,7 +455,143 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* ADMIN PROFILE DETAILS MODAL (OPENS ON CLICK) */}
+        {/* VIEW 3: PROMO CODE & COUPON MANAGEMENT */}
+        {activeView === 'coupons' && (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-gray-200">
+              <div>
+                <h3 className="font-bold text-gray-900 text-sm">Active Promo Coupons</h3>
+                <p className="text-xs text-gray-500">Create discount codes for customer checkout</p>
+              </div>
+              <button
+                onClick={() => setShowAddCouponModal(true)}
+                className="bg-red-800 text-white text-xs font-bold px-4 py-2 rounded-xl hover:bg-red-900 transition flex items-center gap-1.5"
+              >
+                <Plus size={16} />
+                <span>Create Coupon Code</span>
+              </button>
+            </div>
+
+            {coupons.length === 0 ? (
+              <div className="text-center py-16 bg-white rounded-2xl shadow-sm border border-gray-200 text-gray-500">
+                <Tag size={36} className="mx-auto text-gray-400 mb-2" />
+                <p className="font-bold text-sm text-gray-800">No active coupons created yet</p>
+                <p className="text-xs text-gray-500">Click "Create Coupon Code" to offer promo discounts!</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {coupons.map((c) => (
+                  <div key={c._id} className="bg-white rounded-2xl p-5 border border-amber-200 shadow-sm space-y-3 relative">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <span className="bg-emerald-100 text-emerald-800 font-mono font-black text-sm px-3 py-1 rounded-xl border border-emerald-300 inline-block">
+                          {c.code}
+                        </span>
+                        <span className="text-[10px] font-bold text-gray-500 block mt-1.5">
+                          Min Order: ₹{c.minOrderAmount}
+                        </span>
+                      </div>
+
+                      <button
+                        onClick={() => handleDeleteCoupon(c._id)}
+                        className="text-red-600 hover:text-red-800 p-1.5 bg-red-50 rounded-lg transition"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+
+                    <div className="pt-2 border-t border-gray-100 flex justify-between items-center text-xs">
+                      <span className="text-gray-500 font-medium">Discount Value:</span>
+                      <span className="font-black text-red-800 text-sm">
+                        {c.discountType === 'FLAT' ? `₹${c.discountValue} OFF` : `${c.discountValue}% OFF`}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* CREATE COUPON MODAL */}
+        {showAddCouponModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-xl">
+              <div className="flex items-center gap-2 border-b border-gray-100 pb-3">
+                <Tag className="text-red-800" size={20} />
+                <h3 className="text-lg font-black text-gray-900">Create New Coupon</h3>
+              </div>
+
+              <form onSubmit={handleAddCoupon} className="space-y-3">
+                <div>
+                  <label className="text-xs font-bold text-gray-700 block mb-1">Coupon Code</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. SPICY50"
+                    value={couponCode}
+                    onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                    className="w-full text-xs p-2.5 border border-gray-300 rounded-xl text-black bg-white uppercase font-mono tracking-wider"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs font-bold text-gray-700 block mb-1">Discount Type</label>
+                    <select
+                      value={discountType}
+                      onChange={(e) => setDiscountType(e.target.value)}
+                      className="w-full text-xs font-bold p-2.5 border border-gray-300 rounded-xl text-black bg-white"
+                    >
+                      <option value="FLAT">Flat ₹ OFF</option>
+                      <option value="PERCENTAGE">Percentage % OFF</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-gray-700 block mb-1">Discount Amount</label>
+                    <input
+                      type="number"
+                      required
+                      value={discountValue}
+                      onChange={(e) => setDiscountValue(e.target.value)}
+                      className="w-full text-xs p-2.5 border border-gray-300 rounded-xl text-black bg-white font-bold"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-gray-700 block mb-1">Minimum Order Amount (₹)</label>
+                  <input
+                    type="number"
+                    required
+                    value={minOrderAmount}
+                    onChange={(e) => setMinOrderAmount(e.target.value)}
+                    className="w-full text-xs p-2.5 border border-gray-300 rounded-xl text-black bg-white font-medium"
+                  />
+                </div>
+
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddCouponModal(false)}
+                    className="flex-1 bg-gray-100 text-gray-700 text-xs font-bold py-2.5 rounded-xl hover:bg-gray-200"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 bg-red-800 text-white text-xs font-bold py-2.5 rounded-xl hover:bg-red-900"
+                  >
+                    Save Coupon
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* ADMIN PROFILE DETAILS MODAL */}
         {showAdminProfileModal && adminProfile && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-3xl p-6 max-w-md w-full space-y-4 shadow-xl border border-gray-200 relative">
@@ -448,15 +633,6 @@ export default function AdminDashboard() {
                   </span>
                   <span className="font-bold text-green-700">Orders, Products, Status Control</span>
                 </div>
-
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-500 flex items-center gap-1.5">
-                    <UserCheck size={14} className="text-red-800" /> Account ID:
-                  </span>
-                  <span className="font-mono text-[10px] bg-white px-2 py-0.5 rounded border border-gray-200 text-gray-800">
-                    {adminProfile._id || adminProfile.id}
-                  </span>
-                </div>
               </div>
 
               <button
@@ -469,136 +645,6 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* ADD PRODUCT MODAL */}
-        {showAddModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-3xl p-6 max-w-md w-full space-y-4 shadow-xl max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center gap-2 border-b border-gray-100 pb-3">
-                <Tag className="text-red-800" size={20} />
-                <h3 className="text-lg font-black text-gray-900">Add New Pickle Variety</h3>
-              </div>
-
-              <form onSubmit={handleAddProduct} className="space-y-3">
-                <div>
-                  <label className="text-xs font-bold text-gray-700 block mb-1">Pickle Name</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g., Spicy Boneless Mutton Pickle"
-                    value={newProductName}
-                    onChange={(e) => setNewProductName(e.target.value)}
-                    className="w-full text-xs p-2.5 border border-gray-300 rounded-xl text-black bg-white font-medium"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-gray-700 block mb-1">Description</label>
-                  <textarea
-                    required
-                    rows="2"
-                    placeholder="Homestyle preparation, family spices & ingredients..."
-                    value={newProductDesc}
-                    onChange={(e) => setNewProductDesc(e.target.value)}
-                    className="w-full text-xs p-2.5 border border-gray-300 rounded-xl text-black bg-white font-medium"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-gray-700 block mb-1">Spice Level Parameter</label>
-                  <select
-                    value={newProductSpice}
-                    onChange={(e) => setNewProductSpice(e.target.value)}
-                    className="w-full text-xs font-bold p-2.5 border border-gray-300 rounded-xl text-black bg-white cursor-pointer"
-                  >
-                    <option value="Mild" className="text-black bg-white">Mild Spice 🌶️</option>
-                    <option value="Medium" className="text-black bg-white">Medium Spice 🌶️🌶️</option>
-                    <option value="Hot" className="text-black bg-white">Hot Spice 🌶️🌶️🌶️</option>
-                    <option value="Extra Hot" className="text-black bg-white">Extra Hot 🔥</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-gray-700 block mb-1">Image URL (Optional)</label>
-                  <input
-                    type="url"
-                    placeholder="https://..."
-                    value={newProductImage}
-                    onChange={(e) => setNewProductImage(e.target.value)}
-                    className="w-full text-xs p-2.5 border border-gray-300 rounded-xl text-black bg-white font-medium"
-                  />
-                </div>
-
-                <div className="bg-gray-50 p-3 rounded-2xl space-y-2 border border-gray-200">
-                  <span className="text-xs font-black text-gray-800 block">250g Jar Pricing</span>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-[11px] font-bold text-gray-500 block mb-0.5">Original Price (₹)</label>
-                      <input
-                        type="number"
-                        required
-                        value={origPrice250}
-                        onChange={(e) => setOrigPrice250(e.target.value)}
-                        className="w-full text-xs p-2 border border-gray-300 rounded-lg text-black bg-white font-bold"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[11px] font-bold text-red-800 block mb-0.5">Offer Price (₹)</label>
-                      <input
-                        type="number"
-                        required
-                        value={offerPrice250}
-                        onChange={(e) => setOfferPrice250(e.target.value)}
-                        className="w-full text-xs p-2 border border-red-300 rounded-lg text-black bg-white font-bold"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-gray-50 p-3 rounded-2xl space-y-2 border border-gray-200">
-                  <span className="text-xs font-black text-gray-800 block">500g Jar Pricing</span>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-[11px] font-bold text-gray-500 block mb-0.5">Original Price (₹)</label>
-                      <input
-                        type="number"
-                        required
-                        value={origPrice500}
-                        onChange={(e) => setOrigPrice500(e.target.value)}
-                        className="w-full text-xs p-2 border border-gray-300 rounded-lg text-black bg-white font-bold"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[11px] font-bold text-red-800 block mb-0.5">Offer Price (₹)</label>
-                      <input
-                        type="number"
-                        required
-                        value={offerPrice500}
-                        onChange={(e) => setOfferPrice500(e.target.value)}
-                        className="w-full text-xs p-2 border border-red-300 rounded-lg text-black bg-white font-bold"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowAddModal(false)}
-                    className="flex-1 bg-gray-100 text-gray-700 text-xs font-bold py-2.5 rounded-xl hover:bg-gray-200"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="flex-1 bg-red-800 text-white text-xs font-bold py-2.5 rounded-xl hover:bg-red-900"
-                  >
-                    Save Pickle
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
