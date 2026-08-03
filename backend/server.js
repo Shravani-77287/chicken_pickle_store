@@ -8,6 +8,7 @@ const authRoutes = require('./routes/authRoutes');
 const productRoutes = require('./routes/productRoutes');
 const orderRoutes = require('./routes/orderRoutes'); // <-- 1. Import order routes
 const couponRoutes = require('./routes/couponRoutes');
+const paymentRoutes = require('./routes/paymentRoutes');
 
 const app = express();
 
@@ -27,6 +28,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes); // <-- 2. Mount order routes
 app.use('/api/coupons', couponRoutes);
+app.use('/api/payment', paymentRoutes);
+
 app.get('/', (req, res) => {
   res.send('🚀 Chicken Pickle API Server is running!');
 });

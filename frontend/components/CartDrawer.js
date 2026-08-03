@@ -1,7 +1,7 @@
 // frontend/components/CartDrawer.js
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useCart } from '../context/CartContext';
 import API from '../lib/api';
 import { useRouter } from 'next/navigation';
@@ -24,6 +24,20 @@ import {
   Tag,
 } from 'lucide-react';
 
+const loadRazorpaySDK = () => {
+  return new Promise((resolve) => {
+    if (window.Razorpay) {
+      resolve(true);
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+};
+
 function CartDrawer() {
   const { cartItems = [], isCartOpen, setIsCartOpen, updateQuantity, clearCart } = useCart();
   const router = useRouter();
@@ -33,7 +47,7 @@ function CartDrawer() {
   const [selectedInstruction, setSelectedInstruction] = useState('door');
   const [showGstinInput, setShowGstinInput] = useState(false);
   const [gstin, setGstin] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('PhonePe UPI');
+  const [paymentMethod, setPaymentMethod] = useState('Razorpay (Cards / UPI / NetBanking)');
   const [showPaymentMenu, setShowPaymentMenu] = useState(false);
   const [showAddressModal, setShowAddressModal] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -51,6 +65,18 @@ function CartDrawer() {
     address: 'Malla Reddy Engineering College for Women, Maisammaguda',
     pincode: '500100',
   });
+
+  // Reset order success view when items change
+  useEffect(() => {
+    if (items.length > 0 && orderSuccess) {
+      setOrderSuccess(false);
+    }
+  }, [items.length]);
+
+  const handleCloseDrawer = () => {
+    setOrderSuccess(false);
+    setIsCartOpen(false);
+  };
 
   if (!isCartOpen) return null;
 
@@ -73,12 +99,11 @@ function CartDrawer() {
   const deliveryCharge = isFreeDelivery ? 0 : 30;
   const deliverySavings = isFreeDelivery && items.length > 0 ? 30 : 0;
 
-  // Coupon Discount Calculations
   const couponDiscount = appliedCoupon ? appliedCoupon.discountAmount : 0;
   const grandTotal = Math.max(0, itemsTotal - couponDiscount + deliveryCharge + handlingCharge);
   const totalSavings = itemSavings + deliverySavings + couponDiscount;
 
-  // Apply Coupon Handler
+  // Coupon Handlers
   const handleApplyCoupon = async (e) => {
     e.preventDefault();
     if (!couponCode.trim()) return;
@@ -101,13 +126,13 @@ function CartDrawer() {
     }
   };
 
-  // Remove Coupon Handler
   const handleRemoveCoupon = () => {
     setAppliedCoupon(null);
     setCouponCode('');
     setCouponError('');
   };
 
+  // ORDER SUBMISSION HANDLER
   const handlePlaceOrder = async () => {
     if (items.length === 0) return;
     setLoading(true);
@@ -132,12 +157,80 @@ function CartDrawer() {
         couponCode: appliedCoupon ? appliedCoupon.code : '',
       };
 
-      await API.post('/orders', orderPayload);
-      setOrderSuccess(true);
-      clearCart();
+      // CASH ON DELIVERY
+      if (paymentMethod === 'Cash on Delivery (COD)') {
+        await API.post('/orders', orderPayload);
+        setOrderSuccess(true);
+        clearCart();
+        setLoading(false);
+        return;
+      }
+
+      // ONLINE PAYMENT VIA RAZORPAY
+      const isSDKLoaded = await loadRazorpaySDK();
+      if (!isSDKLoaded) {
+        alert('Razorpay SDK failed to load. Please check your internet connection.');
+        setLoading(false);
+        return;
+      }
+
+      // 1. Create Order on Backend
+      const { data: rzpOrder } = await API.post('/payment/create-order', {
+        amount: grandTotal,
+      });
+
+      // 2. Open Razorpay Popup
+      const options = {
+        key: rzpOrder.keyId,
+        amount: rzpOrder.amount,
+        currency: rzpOrder.currency,
+        name: 'Chicken Pickle Store 🌶️',
+        description: 'Authentic Homestyle Pickle Order',
+        order_id: rzpOrder.id,
+        prefill: {
+          name: customer.name,
+          contact: customer.phone,
+        },
+        theme: {
+          color: '#991b1b',
+        },
+        handler: async function (response) {
+          try {
+            // 3. Verify Payment Signature
+            await API.post('/payment/verify', {
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+            });
+
+            // 4. Save Order to Database
+            await API.post('/orders', {
+              ...orderPayload,
+              paymentResult: {
+                id: response.razorpay_payment_id,
+                status: 'COMPLETED',
+              },
+            });
+
+            setOrderSuccess(true);
+            clearCart();
+          } catch (error) {
+            alert('Payment verification failed. Please contact support.');
+          } finally {
+            setLoading(false);
+          }
+        },
+        modal: {
+          ondismiss: function () {
+            setLoading(false);
+          },
+        },
+      };
+
+      const paymentWindow = new window.Razorpay(options);
+      paymentWindow.open();
     } catch (error) {
-      alert(error.response?.data?.message || 'Failed to place order. Please try again.');
-    } finally {
+      alert(error.response?.data?.message || 'Failed to initiate checkout.');
       setLoading(false);
     }
   };
@@ -161,7 +254,7 @@ function CartDrawer() {
             <h2 className="font-extrabold text-base tracking-wide text-white">Your Cart ({items.length})</h2>
           </div>
           <button
-            onClick={() => setIsCartOpen(false)}
+            onClick={handleCloseDrawer}
             className="p-1.5 rounded-full bg-gray-800 text-gray-400 hover:text-white transition"
           >
             <X size={18} />
@@ -193,7 +286,7 @@ function CartDrawer() {
             <h3 className="text-lg font-bold text-gray-300">Your cart is empty</h3>
             <p className="text-xs text-gray-500">Add some delicious spicy pickles to get started!</p>
             <button
-              onClick={() => setIsCartOpen(false)}
+              onClick={handleCloseDrawer}
               className="mt-4 bg-red-800 text-white px-5 py-2.5 rounded-xl font-bold text-xs"
             >
               Browse Catalog
@@ -232,7 +325,7 @@ function CartDrawer() {
               ))}
             </div>
 
-            {/* Promo / Coupon Code Input Section */}
+            {/* Promo / Coupon Code Section */}
             <div className="bg-[#1e1e1e] p-4 rounded-2xl border border-gray-800 space-y-2">
               <div className="flex items-center justify-between">
                 <h4 className="text-xs font-bold text-gray-300 flex items-center gap-1.5">
@@ -449,8 +542,8 @@ function CartDrawer() {
                 onClick={() => setShowPaymentMenu(!showPaymentMenu)}
                 className="flex items-center gap-1.5 text-white font-bold hover:text-emerald-400 transition"
               >
-                <div className="w-5 h-5 bg-purple-600 rounded flex items-center justify-center text-[10px] font-black">
-                  pe
+                <div className="w-5 h-5 bg-blue-600 rounded flex items-center justify-center text-[10px] font-black">
+                  rz
                 </div>
                 <span>PAY USING</span>
                 <ChevronUp size={14} className={`transition-transform ${showPaymentMenu ? 'rotate-180' : ''}`} />
@@ -461,7 +554,7 @@ function CartDrawer() {
 
             {showPaymentMenu && (
               <div className="bg-[#242424] p-3 rounded-xl border border-gray-700 space-y-2 text-xs animate-in slide-in-from-bottom-2">
-                {['PhonePe UPI', 'Google Pay / Paytm', 'Cash on Delivery (COD)'].map((method) => (
+                {['Razorpay (Cards / UPI / NetBanking)', 'Cash on Delivery (COD)'].map((method) => (
                   <button
                     key={method}
                     onClick={() => {
@@ -493,11 +586,11 @@ function CartDrawer() {
                 {loading ? (
                   <>
                     <Loader2 size={18} className="animate-spin" />
-                    <span>Placing...</span>
+                    <span>Processing...</span>
                   </>
                 ) : (
                   <>
-                    <span>Place Order</span>
+                    <span>{paymentMethod.includes('Razorpay') ? 'Pay & Place Order' : 'Place Order'}</span>
                     <ChevronRight size={20} className="stroke-[3]" />
                   </>
                 )}
