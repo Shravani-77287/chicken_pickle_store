@@ -64,7 +64,7 @@ export default function HomePage() {
         🌶️ Free Delivery on all Orders Above ₹499 | Authentic Homestyle Taste
       </div>
 
-    // Replace the <header>...</header> block in frontend/app/page.js
+     <header>...</header> 
       <header className="bg-white border-b border-amber-200 sticky top-0 z-40">
         <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
           <Link href="/" className="text-xl sm:text-2xl font-black text-red-800 tracking-wide">
