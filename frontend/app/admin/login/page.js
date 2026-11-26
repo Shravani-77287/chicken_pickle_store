@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import API from '../../../lib/api';
-import { Lock, Mail, Key, Loader2 } from 'lucide-react';
+import { ArrowLeft,Lock, Mail, Key, Loader2 } from 'lucide-react';
 
 export default function AdminLogin() {
   const [email, setEmail] = useState('');
@@ -35,6 +35,13 @@ export default function AdminLogin() {
   return (
     <div className="min-h-screen bg-amber-50 flex items-center justify-center p-4">
       <div className="max-w-md w-full bg-white rounded-3xl p-8 shadow-xl border border-amber-200">
+        <Link
+  href="/"
+  className="inline-flex items-center gap-1.5 text-xs font-bold text-gray-600 hover:text-red-800 transition mb-4"
+>
+  <ArrowLeft size={14} />
+  <span>Go Back to Store</span>
+</Link>
         <div className="text-center mb-8">
           <div className="w-12 h-12 bg-red-100 text-red-800 rounded-2xl flex items-center justify-center mx-auto mb-3">
             <Lock size={24} />
