@@ -7,7 +7,7 @@ const User = require('../models/User');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'chicken_pickle_secret_key_2026';
 
-// POST /api/auth/register - Create a new Customer or Owner account
+// POST /api/auth/register
 router.post('/register', async (req, res) => {
   try {
     const { name, email, phone, password, role, securityQuestion, securityAnswer } = req.body;
@@ -55,14 +55,22 @@ router.post('/register', async (req, res) => {
     });
   } catch (error) {
     console.error('Register Error:', error);
-    res.status(500).json({ message: 'Failed to create account' });
+    if (error.code === 11000) {
+      const duplicateField = Object.keys(error.keyPattern || {})[0] || 'email';
+      return res.status(400).json({ message: `An account with this ${duplicateField} already exists` });
+    }
+    res.status(500).json({ message: error.message || 'Failed to create account' });
   }
 });
 
-// POST /api/auth/login - Login Customer or Owner
+// POST /api/auth/login
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ message: 'Email and password are required' });
+    }
 
     const user = await User.findOne({ email: email.toLowerCase().trim() });
     if (!user) {
@@ -93,11 +101,11 @@ router.post('/login', async (req, res) => {
     });
   } catch (error) {
     console.error('Login Error:', error);
-    res.status(500).json({ message: 'Login failed' });
+    res.status(500).json({ message: error.message || 'Login failed' });
   }
 });
 
-// POST /api/auth/forgot-password/question - Fetch user's security question by email
+// POST /api/auth/forgot-password/question
 router.post('/forgot-password/question', async (req, res) => {
   try {
     const { email } = req.body;
@@ -121,11 +129,11 @@ router.post('/forgot-password/question', async (req, res) => {
       securityQuestion: user.securityQuestion,
     });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to verify email' });
+    res.status(500).json({ message: error.message || 'Failed to verify email' });
   }
 });
 
-// POST /api/auth/forgot-password/reset - Verify security answer and set new password
+// POST /api/auth/forgot-password/reset
 router.post('/forgot-password/reset', async (req, res) => {
   try {
     const { email, securityAnswer, newPassword } = req.body;
@@ -154,11 +162,11 @@ router.post('/forgot-password/reset', async (req, res) => {
     res.json({ message: 'Password reset successful! Please sign in with your new password.' });
   } catch (error) {
     console.error('Reset Password Error:', error);
-    res.status(500).json({ message: 'Failed to reset password' });
+    res.status(500).json({ message: error.message || 'Failed to reset password' });
   }
 });
 
-// GET /api/auth/me - Get current logged-in user details
+// GET /api/auth/me
 router.get('/me', async (req, res) => {
   try {
     const authHeader = req.headers.authorization;
