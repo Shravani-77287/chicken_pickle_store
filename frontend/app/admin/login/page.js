@@ -1,10 +1,10 @@
-// frontend/app/login/page.js
+// frontend/app/admin/login/page.js
 'use client';
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import API from '../../lib/api';
+import API from '../../../lib/api';
 import {
   ArrowLeft,
   Lock,
@@ -25,11 +25,10 @@ const SECURITY_QUESTIONS = [
   'What was your childhood nickname?',
 ];
 
-export default function CustomerAuthPage() {
+export default function AdminLogin() {
   const [mode, setMode] = useState('login'); // 'login' | 'register' | 'forgot'
-  const [forgotStep, setForgotStep] = useState(1); // 1 = enter email, 2 = answer question & reset
+  const [forgotStep, setForgotStep] = useState(1);
 
-  // Form Fields
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -42,7 +41,6 @@ export default function CustomerAuthPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
-
   const router = useRouter();
 
   const switchMode = (newMode) => {
@@ -52,7 +50,6 @@ export default function CustomerAuthPage() {
     setSuccessMsg('');
   };
 
-  // 1. LOGIN SUBMIT
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -60,17 +57,15 @@ export default function CustomerAuthPage() {
 
     try {
       const res = await API.post('/auth/login', { email, password });
-      localStorage.setItem('customer_token', res.data.token);
-      localStorage.setItem('customer_user', JSON.stringify(res.data.user));
-      router.push('/');
+      localStorage.setItem('pickle_token', res.data.token);
+      router.push('/admin');
     } catch (err) {
-      setError(err.response?.data?.message || 'Invalid email or password');
+      setError(err.response?.data?.message || 'Invalid admin credentials');
     } finally {
       setLoading(false);
     }
   };
 
-  // 2. REGISTER SUBMIT
   const handleRegister = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -82,14 +77,13 @@ export default function CustomerAuthPage() {
         email,
         phone,
         password,
-        role: 'customer',
+        role: 'admin',
         securityQuestion,
         securityAnswer,
       });
 
-      localStorage.setItem('customer_token', res.data.token);
-      localStorage.setItem('customer_user', JSON.stringify(res.data.user));
-      router.push('/');
+      localStorage.setItem('pickle_token', res.data.token);
+      router.push('/admin');
     } catch (err) {
       setError(err.response?.data?.message || 'Registration failed');
     } finally {
@@ -97,7 +91,6 @@ export default function CustomerAuthPage() {
     }
   };
 
-  // 3A. FORGOT PASSWORD - STEP 1 (VERIFY EMAIL & FETCH QUESTION)
   const handleFetchQuestion = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -108,13 +101,12 @@ export default function CustomerAuthPage() {
       setFetchedQuestion(res.data.securityQuestion);
       setForgotStep(2);
     } catch (err) {
-      setError(err.response?.data?.message || 'Could not find an account with that email');
+      setError(err.response?.data?.message || 'No owner account found with this email');
     } finally {
       setLoading(false);
     }
   };
 
-  // 3B. FORGOT PASSWORD - STEP 2 (VERIFY ANSWER & RESET PASSWORD)
   const handleResetPassword = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -151,24 +143,22 @@ export default function CustomerAuthPage() {
           <span>Go Back to Store</span>
         </Link>
 
-        {/* Header */}
         <div className="text-center space-y-2">
           <div className="w-12 h-12 bg-red-100 text-red-800 rounded-2xl flex items-center justify-center mx-auto">
             {mode === 'forgot' ? <HelpCircle size={24} /> : <Lock size={24} />}
           </div>
           <h1 className="text-2xl font-black text-gray-900">
-            {mode === 'login' && 'Customer Sign In'}
-            {mode === 'register' && 'Create Customer Account'}
-            {mode === 'forgot' && 'Reset Password'}
+            {mode === 'login' && 'Owner Portal Login'}
+            {mode === 'register' && 'Register Owner Account'}
+            {mode === 'forgot' && 'Reset Owner Password'}
           </h1>
           <p className="text-xs text-gray-500">
-            {mode === 'login' && 'Sign in to track orders & save delivery details'}
-            {mode === 'register' && 'Register to order fresh homestyle chicken pickles'}
-            {mode === 'forgot' && 'Verify your security question to reset your password'}
+            {mode === 'login' && 'Sign in to manage orders, products & coupons'}
+            {mode === 'register' && 'Set up an owner account with recovery security question'}
+            {mode === 'forgot' && 'Confirm your security question to reset password'}
           </p>
         </div>
 
-        {/* Alerts */}
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 text-xs font-bold p-3 rounded-xl text-center">
             {error}
@@ -182,11 +172,10 @@ export default function CustomerAuthPage() {
           </div>
         )}
 
-        {/* MODE 1: LOGIN FORM */}
         {mode === 'login' && (
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="text-xs font-bold text-gray-700 block mb-1">Email Address</label>
+              <label className="text-xs font-bold text-gray-700 block mb-1">Admin Email</label>
               <div className="relative">
                 <Mail size={16} className="absolute left-3.5 top-3 text-gray-400" />
                 <input
@@ -194,7 +183,7 @@ export default function CustomerAuthPage() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
+                  placeholder="admin@pickle.com"
                   className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl text-xs font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-800"
                 />
               </div>
@@ -229,27 +218,26 @@ export default function CustomerAuthPage() {
               disabled={loading}
               className="w-full bg-red-800 hover:bg-red-900 text-white font-bold py-3 rounded-xl text-xs transition flex items-center justify-center gap-2 disabled:opacity-50"
             >
-              {loading ? <Loader2 size={16} className="animate-spin" /> : 'Sign In'}
+              {loading ? <Loader2 size={16} className="animate-spin" /> : 'Sign In to Dashboard'}
             </button>
 
             <p className="text-center text-xs text-gray-600 pt-2">
-              Don’t have an account?{' '}
+              Need an owner account?{' '}
               <button
                 type="button"
                 onClick={() => switchMode('register')}
                 className="font-black text-red-800 hover:underline"
               >
-                Register Now
+                Register Here
               </button>
             </p>
           </form>
         )}
 
-        {/* MODE 2: REGISTER FORM */}
         {mode === 'register' && (
           <form onSubmit={handleRegister} className="space-y-3.5">
             <div>
-              <label className="text-xs font-bold text-gray-700 block mb-1">Full Name</label>
+              <label className="text-xs font-bold text-gray-700 block mb-1">Owner Name</label>
               <div className="relative">
                 <User size={16} className="absolute left-3.5 top-3 text-gray-400" />
                 <input
@@ -266,82 +254,63 @@ export default function CustomerAuthPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-bold text-gray-700 block mb-1">Email</label>
-                <div className="relative">
-                  <Mail size={15} className="absolute left-3 top-3 text-gray-400" />
-                  <input
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@example.com"
-                    className="w-full pl-9 pr-3 py-2.5 border border-gray-300 rounded-xl text-xs font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-800"
-                  />
-                </div>
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="admin@pickle.com"
+                  className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-xs font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-800"
+                />
               </div>
-
               <div>
-                <label className="text-xs font-bold text-gray-700 block mb-1">Phone Number</label>
-                <div className="relative">
-                  <Phone size={15} className="absolute left-3 top-3 text-gray-400" />
-                  <input
-                    type="tel"
-                    required
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="9876543210"
-                    className="w-full pl-9 pr-3 py-2.5 border border-gray-300 rounded-xl text-xs font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-800"
-                  />
-                </div>
+                <label className="text-xs font-bold text-gray-700 block mb-1">Phone</label>
+                <input
+                  type="tel"
+                  required
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="9876543210"
+                  className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-xs font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-800"
+                />
               </div>
             </div>
 
             <div>
               <label className="text-xs font-bold text-gray-700 block mb-1">Password</label>
-              <div className="relative">
-                <Key size={16} className="absolute left-3.5 top-3 text-gray-400" />
-                <input
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Create a strong password"
-                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl text-xs font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-800"
-                />
-              </div>
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-xs font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-800"
+              />
             </div>
 
-            {/* Security Question for Password Recovery */}
             <div className="bg-amber-50/80 p-3.5 rounded-2xl border border-amber-200 space-y-2.5">
               <span className="text-[11px] font-black text-red-900 uppercase tracking-wider block">
-                Account Recovery Setup
+                Password Recovery Security Question
               </span>
-
-              <div>
-                <label className="text-xs font-bold text-gray-700 block mb-1">Security Question</label>
-                <select
-                  value={securityQuestion}
-                  onChange={(e) => setSecurityQuestion(e.target.value)}
-                  className="w-full p-2.5 border border-gray-300 rounded-xl text-xs font-semibold text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-red-800"
-                >
-                  {SECURITY_QUESTIONS.map((q) => (
-                    <option key={q} value={q}>
-                      {q}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-gray-700 block mb-1">Your Answer</label>
-                <input
-                  type="text"
-                  required
-                  value={securityAnswer}
-                  onChange={(e) => setSecurityAnswer(e.target.value)}
-                  placeholder="Enter your secret answer"
-                  className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-xs font-semibold text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-red-800"
-                />
-              </div>
+              <select
+                value={securityQuestion}
+                onChange={(e) => setSecurityQuestion(e.target.value)}
+                className="w-full p-2.5 border border-gray-300 rounded-xl text-xs font-semibold text-gray-900 bg-white"
+              >
+                {SECURITY_QUESTIONS.map((q) => (
+                  <option key={q} value={q}>
+                    {q}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="text"
+                required
+                value={securityAnswer}
+                onChange={(e) => setSecurityAnswer(e.target.value)}
+                placeholder="Your secret answer"
+                className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-xs font-semibold text-gray-900 bg-white"
+              />
             </div>
 
             <button
@@ -349,11 +318,11 @@ export default function CustomerAuthPage() {
               disabled={loading}
               className="w-full bg-red-800 hover:bg-red-900 text-white font-bold py-3 rounded-xl text-xs transition flex items-center justify-center gap-2 disabled:opacity-50"
             >
-              {loading ? <Loader2 size={16} className="animate-spin" /> : 'Create Account'}
+              {loading ? <Loader2 size={16} className="animate-spin" /> : 'Register Owner Account'}
             </button>
 
-            <p className="text-center text-xs text-gray-600 pt-1">
-              Already have an account?{' '}
+            <p className="text-center text-xs text-gray-600">
+              Already registered?{' '}
               <button
                 type="button"
                 onClick={() => switchMode('login')}
@@ -365,34 +334,29 @@ export default function CustomerAuthPage() {
           </form>
         )}
 
-        {/* MODE 3: FORGOT PASSWORD (SECURITY QUESTION VERIFICATION) */}
         {mode === 'forgot' && (
           <div className="space-y-4">
             {forgotStep === 1 ? (
               <form onSubmit={handleFetchQuestion} className="space-y-4">
                 <div>
                   <label className="text-xs font-bold text-gray-700 block mb-1">
-                    Enter Your Registered Email
+                    Registered Owner Email
                   </label>
-                  <div className="relative">
-                    <Mail size={16} className="absolute left-3.5 top-3 text-gray-400" />
-                    <input
-                      type="email"
-                      required
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="you@example.com"
-                      className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl text-xs font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-800"
-                    />
-                  </div>
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="admin@pickle.com"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-xs font-semibold text-gray-900"
+                  />
                 </div>
-
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full bg-red-800 hover:bg-red-900 text-white font-bold py-3 rounded-xl text-xs transition flex items-center justify-center gap-2 disabled:opacity-50"
+                  className="w-full bg-red-800 hover:bg-red-900 text-white font-bold py-3 rounded-xl text-xs transition"
                 >
-                  {loading ? <Loader2 size={16} className="animate-spin" /> : 'Find My Security Question'}
+                  {loading ? 'Checking...' : 'Find Security Question'}
                 </button>
               </form>
             ) : (
@@ -412,43 +376,40 @@ export default function CustomerAuthPage() {
                     value={securityAnswer}
                     onChange={(e) => setSecurityAnswer(e.target.value)}
                     placeholder="Type your answer..."
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-xs font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-800"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-xs font-semibold text-gray-900"
                   />
                 </div>
 
                 <div>
                   <label className="text-xs font-bold text-gray-700 block mb-1">New Password</label>
-                  <div className="relative">
-                    <Key size={16} className="absolute left-3.5 top-3 text-gray-400" />
-                    <input
-                      type="password"
-                      required
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      placeholder="Enter new password"
-                      className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl text-xs font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-800"
-                    />
-                  </div>
+                  <input
+                    type="password"
+                    required
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Enter new password"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-xs font-semibold text-gray-900"
+                  />
                 </div>
 
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl text-xs transition flex items-center justify-center gap-2 disabled:opacity-50"
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl text-xs transition"
                 >
-                  {loading ? <Loader2 size={16} className="animate-spin" /> : 'Verify & Reset Password'}
+                  {loading ? 'Resetting...' : 'Verify & Reset Password'}
                 </button>
               </form>
             )}
 
             <p className="text-center text-xs text-gray-600">
-              Remembered your password?{' '}
+              Back to{' '}
               <button
                 type="button"
                 onClick={() => switchMode('login')}
                 className="font-black text-red-800 hover:underline"
               >
-                Back to Sign In
+                Sign In
               </button>
             </p>
           </div>
