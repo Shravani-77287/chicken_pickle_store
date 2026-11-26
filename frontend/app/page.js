@@ -3,7 +3,20 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { ShoppingBag, Star, Flame, Check, Truck, User, X, MapPin, Phone, Mail } from 'lucide-react';
+import {
+  ShoppingBag,
+  Star,
+  Flame,
+  Check,
+  Truck,
+  User,
+  X,
+  MapPin,
+  Phone,
+  Mail,
+  LogIn,
+  LogOut,
+} from 'lucide-react';
 import API from '../lib/api';
 import { useCart } from '../context/CartContext';
 import CartDrawer from '../components/CartDrawer';
@@ -13,18 +26,21 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [selectedVariants, setSelectedVariants] = useState({});
   const [showProfileModal, setShowProfileModal] = useState(false);
-
-  const [customerProfile] = useState({
-    name: 'Shravani',
-    email: 'shravani77287@gmail.com',
-    phone: '9876543210',
-    address: 'Flat 402, Royal Residency, Jubilee Hills',
-    pincode: '500033',
-  });
+  const [customerUser, setCustomerUser] = useState(null);
 
   const { totalItems, setIsCartOpen, addToCart } = useCart();
 
   useEffect(() => {
+    // Load logged-in customer session if available
+    const savedUser = localStorage.getItem('customer_user');
+    if (savedUser) {
+      try {
+        setCustomerUser(JSON.parse(savedUser));
+      } catch (e) {
+        localStorage.removeItem('customer_user');
+      }
+    }
+
     const fetchProducts = async () => {
       try {
         const response = await API.get('/products');
@@ -47,6 +63,13 @@ export default function HomePage() {
     fetchProducts();
   }, []);
 
+  const handleCustomerLogout = () => {
+    localStorage.removeItem('customer_token');
+    localStorage.removeItem('customer_user');
+    setCustomerUser(null);
+    setShowProfileModal(false);
+  };
+
   const handleVariantSelect = (productId, variant) => {
     setSelectedVariants((prev) => ({
       ...prev,
@@ -56,7 +79,6 @@ export default function HomePage() {
 
   return (
     <main className="min-h-screen bg-amber-50 text-gray-900 pb-16">
-      {/* Global Cart Drawer Component */}
       <CartDrawer />
 
       {/* Top Banner */}
@@ -64,28 +86,48 @@ export default function HomePage() {
         🌶️ Free Delivery on all Orders Above ₹499 | Authentic Homestyle Taste
       </div>
 
-     <header>...</header> 
+      {/* Navigation Header */}
       <header className="bg-white border-b border-amber-200 sticky top-0 z-40">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
+        <div className="max-w-6xl mx-auto px-4 py-4 flex flex-wrap justify-between items-center gap-3">
           <Link href="/" className="text-xl sm:text-2xl font-black text-red-800 tracking-wide">
             CHICKEN PICKLE STORE
           </Link>
 
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             <Link
               href="/admin"
-              className="text-xs font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 px-3 py-2 rounded-full transition flex items-center gap-1.5 border border-gray-200"
+              className="text-xs font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 px-3 py-2 rounded-full transition border border-gray-200"
             >
-              <span>Owner Portal</span>
+              Owner Portal
             </Link>
 
-            <button
-              onClick={() => setShowProfileModal(true)}
-              className="text-xs font-bold text-gray-800 bg-gray-100 hover:bg-gray-200 px-3 py-2 rounded-full transition flex items-center gap-1.5"
-            >
-              <User size={15} className="text-red-800" />
-              <span className="hidden sm:inline">Profile</span>
-            </button>
+            {customerUser ? (
+              <>
+                <button
+                  onClick={() => setShowProfileModal(true)}
+                  className="text-xs font-bold text-gray-800 bg-gray-100 hover:bg-gray-200 px-3 py-2 rounded-full transition flex items-center gap-1.5"
+                >
+                  <User size={15} className="text-red-800" />
+                  <span>{customerUser.name}</span>
+                </button>
+
+                <button
+                  onClick={handleCustomerLogout}
+                  className="text-xs font-bold text-red-800 bg-red-50 hover:bg-red-100 px-3 py-2 rounded-full transition flex items-center gap-1.5 border border-red-200"
+                >
+                  <LogOut size={14} />
+                  <span>Logout</span>
+                </button>
+              </>
+            ) : (
+              <Link
+                href="/login"
+                className="text-xs font-bold text-white bg-red-800 hover:bg-red-900 px-3.5 py-2 rounded-full transition flex items-center gap-1.5"
+              >
+                <LogIn size={14} />
+                <span>Login / Register</span>
+              </Link>
+            )}
 
             <Link
               href="/track"
@@ -133,9 +175,10 @@ export default function HomePage() {
               const currentVariant = selectedVariants[product._id] || product.variants?.[0];
               const offerPrice = currentVariant?.price || 0;
               const originalPrice = currentVariant?.originalPrice || offerPrice + 50;
-              const discountPercent = offerPrice > 0
-                ? Math.round(((originalPrice - offerPrice) / originalPrice) * 100)
-                : 0;
+              const discountPercent =
+                offerPrice > 0
+                  ? Math.round(((originalPrice - offerPrice) / originalPrice) * 100)
+                  : 0;
 
               return (
                 <div
@@ -161,14 +204,18 @@ export default function HomePage() {
                     <div className="p-5 space-y-3">
                       <div className="flex items-center gap-1 text-amber-500 text-xs font-bold">
                         <Star size={14} fill="currentColor" />
-                        <span>{product.rating > 0 ? product.rating : '4.8'} ({product.numReviews || 12} reviews)</span>
+                        <span>
+                          {product.rating > 0 ? product.rating : '4.8'} ({product.numReviews || 12} reviews)
+                        </span>
                       </div>
 
                       <h4 className="font-bold text-lg text-gray-900">{product.name}</h4>
                       <p className="text-xs text-gray-500 line-clamp-2">{product.description}</p>
 
                       <div>
-                        <span className="text-xs font-semibold text-gray-600 mb-1.5 block">Select Jar Size:</span>
+                        <span className="text-xs font-semibold text-gray-600 mb-1.5 block">
+                          Select Jar Size:
+                        </span>
                         <div className="flex gap-2">
                           {product.variants?.map((variant) => {
                             const isSelected = currentVariant?.weight === variant.weight;
@@ -195,14 +242,14 @@ export default function HomePage() {
                   <div className="p-5 pt-0">
                     <div className="flex items-center justify-between border-t border-gray-100 pt-4">
                       <div>
-                        <span className="text-xs text-gray-400 block">Price ({currentVariant?.weight})</span>
+                        <span className="text-xs text-gray-400 block">
+                          Price ({currentVariant?.weight})
+                        </span>
                         <div className="flex items-baseline gap-2">
                           <span className="text-xs text-gray-400 line-through font-bold">
                             ₹{originalPrice}
                           </span>
-                          <span className="text-xl font-black text-red-800">
-                            ₹{offerPrice}
-                          </span>
+                          <span className="text-xl font-black text-red-800">₹{offerPrice}</span>
                         </div>
                       </div>
 
@@ -222,8 +269,8 @@ export default function HomePage() {
         )}
       </section>
 
-      {/* Profile Modal */}
-      {showProfileModal && (
+      {/* Logged-In Customer Profile Modal */}
+      {showProfileModal && customerUser && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-xl border border-amber-200 relative">
             <button
@@ -235,40 +282,53 @@ export default function HomePage() {
 
             <div className="text-center pt-2">
               <div className="w-16 h-16 bg-red-100 text-red-800 rounded-full flex items-center justify-center mx-auto mb-3 font-black text-2xl">
-                {customerProfile.name.charAt(0)}
+                {customerUser.name.charAt(0).toUpperCase()}
               </div>
-              <h3 className="text-lg font-black text-gray-900">{customerProfile.name}</h3>
+              <h3 className="text-lg font-black text-gray-900">{customerUser.name}</h3>
               <span className="text-xs font-bold text-green-700 bg-green-100 px-2.5 py-0.5 rounded-full inline-block mt-1">
-                Verified Customer Account ✅
+                Verified Customer Account
               </span>
             </div>
 
             <div className="space-y-3 bg-amber-50/60 p-4 rounded-2xl text-xs">
               <div className="flex items-center gap-2.5 text-gray-700">
                 <Mail size={16} className="text-red-800 shrink-0" />
-                <span className="font-semibold">{customerProfile.email}</span>
+                <span className="font-semibold">{customerUser.email}</span>
               </div>
-              <div className="flex items-center gap-2.5 text-gray-700">
-                <Phone size={16} className="text-red-800 shrink-0" />
-                <span className="font-semibold">{customerProfile.phone}</span>
-              </div>
+              {customerUser.phone && (
+                <div className="flex items-center gap-2.5 text-gray-700">
+                  <Phone size={16} className="text-red-800 shrink-0" />
+                  <span className="font-semibold">{customerUser.phone}</span>
+                </div>
+              )}
               <div className="flex items-start gap-2.5 text-gray-700">
                 <MapPin size={16} className="text-red-800 shrink-0 mt-0.5" />
                 <span>
-                  Default Delivery Address:<br />
-                  <strong className="text-gray-900">{customerProfile.address} ({customerProfile.pincode})</strong>
+                  Default Delivery Area:
+                  <br />
+                  <strong className="text-gray-900">Hyderabad, Telangana</strong>
                 </span>
               </div>
             </div>
 
-            <Link
-              href="/track"
-              onClick={() => setShowProfileModal(false)}
-              className="w-full bg-red-800 text-white font-bold py-2.5 rounded-xl hover:bg-red-900 transition text-xs flex items-center justify-center gap-2"
-            >
-              <Truck size={16} />
-              <span>Track Active Orders</span>
-            </Link>
+            <div className="flex gap-2">
+              <Link
+                href="/track"
+                onClick={() => setShowProfileModal(false)}
+                className="flex-1 bg-red-800 text-white font-bold py-2.5 rounded-xl hover:bg-red-900 transition text-xs flex items-center justify-center gap-1.5"
+              >
+                <Truck size={15} />
+                <span>My Orders</span>
+              </Link>
+
+              <button
+                onClick={handleCustomerLogout}
+                className="px-4 bg-gray-100 text-red-800 font-bold py-2.5 rounded-xl hover:bg-gray-200 transition text-xs flex items-center justify-center gap-1.5"
+              >
+                <LogOut size={15} />
+                <span>Logout</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
