@@ -66,6 +66,7 @@ export default function HomePage() {
   const handleCustomerLogout = () => {
     localStorage.removeItem('customer_token');
     localStorage.removeItem('customer_user');
+    window.dispatchEvent(new Event('auth-change'));
     setCustomerUser(null);
     setShowProfileModal(false);
   };

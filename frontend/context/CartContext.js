@@ -1,83 +1,82 @@
 // frontend/context/CartContext.js
 'use client';
 
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 
 const CartContext = createContext();
+
+const getCartStorageKey = () => {
+  if (typeof window === 'undefined') return 'pickle_cart_guest';
+  try {
+    const savedUser = localStorage.getItem('customer_user');
+    if (savedUser) {
+      const parsed = JSON.parse(savedUser);
+      if (parsed?._id) return `pickle_cart_${parsed._id}`;
+    }
+  } catch (e) {}
+  return 'pickle_cart_guest';
+};
 
 export function CartProvider({ children }) {
   const [cartItems, setCartItems] = useState([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [storageKey, setStorageKey] = useState('pickle_cart_guest');
+  const [isHydrated, setIsHydrated] = useState(false);
 
-  // Load saved cart once on client mount
-  useEffect(() => {
+  const loadCartForCurrentUser = useCallback(() => {
+    const key = getCartStorageKey();
+    setStorageKey(key);
     try {
-      const savedCart = localStorage.getItem('pickle_cart');
-      if (savedCart) {
-        const parsed = JSON.parse(savedCart);
-        if (Array.isArray(parsed)) {
-          setCartItems(parsed);
-        }
-      }
+      localStorage.removeItem('pickle_cart'); // Clear old shared cart
+      const saved = localStorage.getItem(key);
+      setCartItems(saved ? JSON.parse(saved) : []);
     } catch (e) {
-      console.error('Failed to load cart:', e);
+      setCartItems([]);
     }
+    setIsHydrated(true);
   }, []);
 
-  // Sync to localStorage on state change
   useEffect(() => {
-    localStorage.setItem('pickle_cart', JSON.stringify(cartItems));
-  }, [cartItems]);
+    loadCartForCurrentUser();
+    window.addEventListener('auth-change', loadCartForCurrentUser);
+    return () => window.removeEventListener('auth-change', loadCartForCurrentUser);
+  }, [loadCartForCurrentUser]);
+
+  useEffect(() => {
+    if (!isHydrated) return;
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(cartItems));
+    } catch (e) {
+      console.error('Failed to save cart:', e);
+    }
+  }, [cartItems, storageKey, isHydrated]);
 
   const addToCart = (product, variant) => {
-    if (!product) return;
-
-    const selectedVariant = variant || product.variants?.[0] || {
-      weight: '250g',
-      price: 299,
-      originalPrice: 350,
-    };
-
-    const productId = product._id || product.id || String(Date.now());
-
-    setCartItems((prevItems) => {
-      const existingIndex = prevItems.findIndex(
-        (item) =>
-          item._id === productId &&
-          item.selectedVariant?.weight === selectedVariant.weight
+    if (!variant) return;
+    setCartItems((prev) => {
+      const existingIndex = prev.findIndex(
+        (item) => item._id === product._id && item.selectedVariant?.weight === variant.weight
       );
-
       if (existingIndex > -1) {
-        const updated = [...prevItems];
+        const updated = [...prev];
         updated[existingIndex] = {
           ...updated[existingIndex],
           quantity: updated[existingIndex].quantity + 1,
         };
         return updated;
-      } else {
-        return [
-          ...prevItems,
-          {
-            _id: productId,
-            name: product.name || 'Chicken Pickle',
-            images: product.images || ['/images/placeholder.jpg'],
-            selectedVariant,
-            quantity: 1,
-          },
-        ];
       }
+      return [...prev, { ...product, selectedVariant: variant, quantity: 1 }];
     });
-
-    // Automatically slide open the cart drawer
     setIsCartOpen(true);
   };
 
   const updateQuantity = (productId, weight, newQty) => {
     if (newQty <= 0) {
-      removeFromCart(productId, weight);
+      setCartItems((prev) =>
+        prev.filter((item) => !(item._id === productId && item.selectedVariant?.weight === weight))
+      );
       return;
     }
-
     setCartItems((prev) =>
       prev.map((item) =>
         item._id === productId && item.selectedVariant?.weight === weight
@@ -87,18 +86,11 @@ export function CartProvider({ children }) {
     );
   };
 
-  const removeFromCart = (productId, weight) => {
-    setCartItems((prev) =>
-      prev.filter(
-        (item) =>
-          !(item._id === productId && item.selectedVariant?.weight === weight)
-      )
-    );
-  };
-
   const clearCart = () => {
     setCartItems([]);
-    localStorage.removeItem('pickle_cart');
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(storageKey);
+    }
   };
 
   const totalItems = cartItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
@@ -107,13 +99,12 @@ export function CartProvider({ children }) {
     <CartContext.Provider
       value={{
         cartItems,
+        totalItems,
         isCartOpen,
         setIsCartOpen,
         addToCart,
         updateQuantity,
-        removeFromCart,
         clearCart,
-        totalItems,
       }}
     >
       {children}
@@ -121,10 +112,4 @@ export function CartProvider({ children }) {
   );
 }
 
-export function useCart() {
-  const context = useContext(CartContext);
-  if (!context) {
-    throw new Error('useCart must be used within a CartProvider');
-  }
-  return context;
-}
+export const useCart = () => useContext(CartContext);

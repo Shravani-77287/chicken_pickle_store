@@ -67,6 +67,7 @@ export default function CustomerAuthPage() {
 
       localStorage.setItem('customer_token', res.data.token);
       localStorage.setItem('customer_user', JSON.stringify(res.data.user));
+      window.dispatchEvent(new Event('auth-change'));
       router.push('/');
     } catch (err) {
       setError(err.response?.data?.message || 'Invalid email or password');
