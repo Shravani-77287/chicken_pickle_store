@@ -1,31 +1,56 @@
-// models/Product.js
+// backend/models/Product.js
 const mongoose = require('mongoose');
-
-const variantSchema = new mongoose.Schema({
-  weight: { type: String, required: true }, // e.g., "250g", "500g", "1kg"
-  price: { type: Number, required: true },  // Price in INR (e.g., 350)
-  stock: { type: Number, required: true, default: 0 } // Inventory count
-});
 
 const productSchema = new mongoose.Schema(
   {
-    name: { type: String, required: true, trim: true }, // e.g., "Boneless Chicken Pickle"
-    slug: { type: String, required: true, unique: true }, // e.g., "boneless-chicken-pickle" for clean URLs
+    name: { type: String, required: true, trim: true },
+    slug: { type: String, required: true, unique: true, lowercase: true, trim: true },
     description: { type: String, required: true },
-    ingredients: [{ type: String }],
-    spiceLevel: { 
-      type: String, 
-      enum: ['Mild', 'Medium', 'Extra Hot'], 
-      default: 'Medium' 
+    category: { type: String, default: 'Chicken Pickles' },
+    images: [{ type: String, required: true }],
+    spiceLevel: {
+      type: String,
+      enum: ['Mild', 'Medium', 'Spicy', 'Extra Fiery'],
+      default: 'Medium',
     },
-    variants: [variantSchema],
-    images: [{ type: String, required: true }], // Cloudinary URLs
-    isBestSeller: { type: Boolean, default: false },
-    isAvailable: { type: Boolean, default: true },
-    rating: { type: Number, default: 0 },
-    numReviews: { type: Number, default: 0 }
+    variants: [
+      {
+        weight: { type: String, required: true },
+        originalPrice: { type: Number, required: true },
+        price: { type: Number, required: true },
+        stock: { type: Number, default: 25 },
+      },
+    ],
+    // Indian FSSAI & Food Labelling Disclosures
+    isNonVeg: { type: Boolean, default: true },
+    ingredients: {
+      type: String,
+      default: 'Fresh Boneless Chicken, Cold-Pressed Groundnut Oil, Guntur Red Chilli Powder, Garlic, Ginger, Turmeric, Fenugreek, Mustard Seeds, Curry Leaves, Lemon Juice, Iodized Salt.',
+    },
+    allergens: {
+      type: String,
+      default: 'Contains Mustard & Groundnut Oil. Processed in a kitchen that handles sesame and nuts.',
+    },
+    shelfLife: {
+      type: String,
+      default: '4 Months from Date of Manufacture (Refrigerate after opening)',
+    },
+    storageInstructions: {
+      type: String,
+      default: 'Store in a cool, dry place. Always use a clean, dry spoon. Keep oil layer above pickle pieces.',
+    },
+    fssaiNumber: {
+      type: String,
+      default: '23626000000000 (Applied / Registered Home Kitchen)',
+    },
+    nutritionalInfo: {
+      type: String,
+      default: 'Per 100g (Approx): Energy 340 kcal | Protein 18g | Total Fat 26g | Carbohydrates 8g | Sodium 920mg',
+    },
+    rating: { type: Number, default: 4.8 },
+    numReviews: { type: Number, default: 12 },
   },
   { timestamps: true }
 );
 
-module.exports = mongoose.model('Product', productSchema);
+module.exports = mongoose.models.Product || mongoose.model('Product', productSchema);
