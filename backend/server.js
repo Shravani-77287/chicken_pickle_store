@@ -34,6 +34,8 @@ app.get('/', (req, res) => {
   res.send('🚀 Chicken Pickle API Server is running!');
 });
 
+app.get('/api/health', (req, res) => res.json({ status: 'OK', timestamp: new Date() }));
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Server listening on http://localhost:${PORT}`);
