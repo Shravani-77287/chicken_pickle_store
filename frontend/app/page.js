@@ -1,7 +1,7 @@
 // frontend/app/page.js
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import {
   ShoppingBag,
@@ -16,10 +16,13 @@ import {
   Mail,
   LogIn,
   LogOut,
+  Search,
 } from 'lucide-react';
 import API from '../lib/api';
 import { useCart } from '../context/CartContext';
 import CartDrawer from '../components/CartDrawer';
+
+const SPICE_LEVELS = ['All', 'Mild', 'Medium', 'Spicy', 'Extra Fiery'];
 
 export default function HomePage() {
   const [products, setProducts] = useState([]);
@@ -28,10 +31,14 @@ export default function HomePage() {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [customerUser, setCustomerUser] = useState(null);
 
+  // Search, Filter & Sort States
+  const [searchQuery, setSearchQuery] = useState('');
+  const [spiceFilter, setSpiceFilter] = useState('All');
+  const [sortBy, setSortBy] = useState('newest');
+
   const { totalItems, setIsCartOpen, addToCart } = useCart();
 
   useEffect(() => {
-    // Load logged-in customer session if available
     const savedUser = localStorage.getItem('customer_user');
     if (savedUser) {
       try {
@@ -76,6 +83,44 @@ export default function HomePage() {
       ...prev,
       [productId]: variant,
     }));
+  };
+
+  const filteredProducts = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+
+    const filtered = products.filter((product) => {
+      const matchesSpice =
+        spiceFilter === 'All' ||
+        (product.spiceLevel || 'Medium').toLowerCase() === spiceFilter.toLowerCase();
+
+      const matchesSearch =
+        !query ||
+        product.name?.toLowerCase().includes(query) ||
+        product.description?.toLowerCase().includes(query) ||
+        product.ingredients?.toLowerCase().includes(query);
+
+      return matchesSpice && matchesSearch;
+    });
+
+    if (sortBy === 'price-asc') {
+      return [...filtered].sort(
+        (a, b) => (a.variants?.[0]?.price || 0) - (b.variants?.[0]?.price || 0)
+      );
+    }
+
+    if (sortBy === 'price-desc') {
+      return [...filtered].sort(
+        (a, b) => (b.variants?.[0]?.price || 0) - (a.variants?.[0]?.price || 0)
+      );
+    }
+
+    return filtered;
+  }, [products, searchQuery, spiceFilter, sortBy]);
+
+  const resetFilters = () => {
+    setSearchQuery('');
+    setSpiceFilter('All');
+    setSortBy('newest');
   };
 
   return (
@@ -150,29 +195,111 @@ export default function HomePage() {
       </header>
 
       {/* Hero Section */}
-      <section className="max-w-6xl mx-auto px-4 py-12 text-center">
+      <section className="max-w-6xl mx-auto px-4 pt-10 pb-6 text-center">
         <span className="inline-flex items-center gap-1 bg-red-100 text-red-800 text-xs font-bold px-3 py-1 rounded-full mb-4">
           <Flame size={14} className="text-red-600" /> 100% Preservative Free
         </span>
-        <h2 className="text-3xl sm:text-5xl font-extrabold text-gray-900 mb-4 leading-tight">
+        <h2 className="text-3xl sm:text-5xl font-extrabold text-gray-900 mb-3 leading-tight">
           Fiery, Homestyle <span className="text-red-800">Chicken Pickles</span>
         </h2>
-        <p className="text-gray-600 max-w-xl mx-auto text-sm sm:text-base mb-8">
+        <p className="text-gray-600 max-w-xl mx-auto text-sm sm:text-base">
           Slow-cooked with premium boneless chicken, cold-pressed oils, and secret family spices. Fresh batches made daily.
         </p>
       </section>
 
+      {/* Search, Spice Filter & Sort Controls */}
+      <section className="max-w-6xl mx-auto px-4 mb-8 space-y-4">
+        <div className="bg-white p-4 rounded-2xl border border-amber-200 shadow-sm flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+          {/* Search Input */}
+          <div className="relative flex-1">
+            <Search size={16} className="absolute left-3.5 top-3 text-gray-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search pickles (e.g., Boneless, Gongura, Garlic)..."
+              className="w-full pl-10 pr-8 py-2.5 bg-amber-50/50 border border-amber-200 rounded-xl text-xs font-semibold text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-800"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-2.5 text-gray-400 hover:text-gray-600"
+              >
+                <X size={15} />
+              </button>
+            )}
+          </div>
+
+          {/* Sort Dropdown */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-gray-500 whitespace-nowrap">Sort by:</span>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="text-xs font-bold p-2.5 bg-amber-50/50 border border-amber-200 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-800 cursor-pointer"
+            >
+              <option value="newest">Latest Batches</option>
+              <option value="price-asc">Price: Low to High</option>
+              <option value="price-desc">Price: High to Low</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Spice Level Filter Pills */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+          <span className="text-xs font-bold text-gray-600 shrink-0 mr-1">Spice Level:</span>
+          {SPICE_LEVELS.map((level) => {
+            const isActive = spiceFilter === level;
+            return (
+              <button
+                key={level}
+                onClick={() => setSpiceFilter(level)}
+                className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition whitespace-nowrap border ${
+                  isActive
+                    ? 'bg-red-800 text-white border-red-800 shadow-sm'
+                    : 'bg-white text-gray-700 border-amber-200 hover:bg-amber-100'
+                }`}
+              >
+                {level === 'All' ? 'All Varieties' : `🌶️ ${level}`}
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
       {/* Product Catalog */}
       <section className="max-w-6xl mx-auto px-4">
-        <h3 className="text-xl font-bold text-gray-900 mb-6">Our Fresh Batches</h3>
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-xl font-bold text-gray-900">
+            Our Fresh Batches ({filteredProducts.length})
+          </h3>
+          {(searchQuery || spiceFilter !== 'All' || sortBy !== 'newest') && (
+            <button
+              onClick={resetFilters}
+              className="text-xs font-bold text-red-800 hover:underline"
+            >
+              Reset Filters
+            </button>
+          )}
+        </div>
 
         {loading ? (
           <div className="text-center py-12 text-gray-500">Loading delicious pickles...</div>
-        ) : products.length === 0 ? (
-          <div className="text-center py-12 text-gray-500">No pickles available right now.</div>
+        ) : filteredProducts.length === 0 ? (
+          <div className="text-center py-12 bg-white rounded-2xl border border-amber-200 space-y-3">
+            <p className="text-sm font-bold text-gray-800">
+              No pickles matched your search or spice filter.
+            </p>
+            <button
+              onClick={resetFilters}
+              className="bg-red-800 text-white text-xs font-bold px-4 py-2 rounded-full hover:bg-red-900 transition"
+            >
+              Show All Pickles
+            </button>
+          </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {products.map((product) => {
+            {filteredProducts.map((product) => {
               const currentVariant = selectedVariants[product._id] || product.variants?.[0];
               const offerPrice = currentVariant?.price || 0;
               const originalPrice = currentVariant?.originalPrice || offerPrice + 50;
@@ -187,7 +314,6 @@ export default function HomePage() {
                   className="bg-white rounded-2xl shadow-sm border border-amber-200 overflow-hidden hover:shadow-md transition flex flex-col justify-between"
                 >
                   <div>
-                    {/* Clickable Product Image -> Opens Product Details Page */}
                     <Link href={`/product/${product.slug || product._id}`} className="block">
                       <div className="h-48 bg-gray-200 relative overflow-hidden">
                         <img
@@ -213,7 +339,6 @@ export default function HomePage() {
                         </span>
                       </div>
 
-                      {/* Clickable Product Title -> Opens Product Details Page */}
                       <Link
                         href={`/product/${product.slug || product._id}`}
                         className="block hover:text-red-800 transition"
