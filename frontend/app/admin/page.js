@@ -23,6 +23,8 @@ import {
   Shield,
   Tag,
   X,
+  Edit2,
+  IndianRupee,
 } from 'lucide-react';
 
 export default function AdminDashboard() {
@@ -44,8 +46,13 @@ export default function AdminDashboard() {
   const [newProductSpice, setNewProductSpice] = useState('Medium');
   const [origPrice250, setOrigPrice250] = useState('350');
   const [offerPrice250, setOfferPrice250] = useState('299');
+  const [stock250, setStock250] = useState('25');
   const [origPrice500, setOrigPrice500] = useState('650');
   const [offerPrice500, setOfferPrice500] = useState('549');
+  const [stock500, setStock500] = useState('20');
+
+  // Edit Product State
+  const [editingProduct, setEditingProduct] = useState(null);
 
   // Add Coupon State
   const [showAddCouponModal, setShowAddCouponModal] = useState(false);
@@ -135,11 +142,13 @@ export default function AdminDashboard() {
             weight: '250g',
             originalPrice: Number(origPrice250),
             price: Number(offerPrice250),
+            stock: Number(stock250),
           },
           {
             weight: '500g',
             originalPrice: Number(origPrice500),
             price: Number(offerPrice500),
+            stock: Number(stock500),
           },
         ],
       };
@@ -152,6 +161,68 @@ export default function AdminDashboard() {
       fetchDashboardData();
     } catch (error) {
       alert(error.response?.data?.message || 'Failed to add new pickle variety');
+    }
+  };
+
+  const openEditModal = (prod) => {
+    const v250 = prod.variants?.find((v) => v.weight === '250g') || prod.variants?.[0] || {
+      weight: '250g',
+      originalPrice: 350,
+      price: 299,
+      stock: 20,
+    };
+    const v500 = prod.variants?.find((v) => v.weight === '500g') || prod.variants?.[1] || {
+      weight: '500g',
+      originalPrice: 650,
+      price: 549,
+      stock: 20,
+    };
+
+    setEditingProduct({
+      _id: prod._id,
+      name: prod.name,
+      description: prod.description,
+      image: prod.images?.[0] || '',
+      spiceLevel: prod.spiceLevel || 'Medium',
+      price250: v250.price,
+      orig250: v250.originalPrice || v250.price + 50,
+      stock250: v250.stock !== undefined ? v250.stock : 25,
+      price500: v500.price,
+      orig500: v500.originalPrice || v500.price + 100,
+      stock500: v500.stock !== undefined ? v500.stock : 20,
+    });
+  };
+
+  const handleUpdateProduct = async (e) => {
+    e.preventDefault();
+    if (!editingProduct) return;
+
+    try {
+      await API.put(`/products/${editingProduct._id}`, {
+        name: editingProduct.name,
+        description: editingProduct.description,
+        image: editingProduct.image,
+        spiceLevel: editingProduct.spiceLevel,
+        variants: [
+          {
+            weight: '250g',
+            originalPrice: Number(editingProduct.orig250),
+            price: Number(editingProduct.price250),
+            stock: Number(editingProduct.stock250),
+          },
+          {
+            weight: '500g',
+            originalPrice: Number(editingProduct.orig500),
+            price: Number(editingProduct.price500),
+            stock: Number(editingProduct.stock500),
+          },
+        ],
+      });
+
+      setEditingProduct(null);
+      fetchDashboardData();
+    } catch (error) {
+      alert(error.response?.data?.message || 'Failed to update product');
     }
   };
 
@@ -195,6 +266,20 @@ export default function AdminDashboard() {
     }
   };
 
+  // KPI Metrics Calculations
+  const totalRevenue = orders
+    .filter((o) => o.status !== 'Cancelled')
+    .reduce((sum, o) => sum + (o.totalPrice || 0), 0);
+
+  const pendingDispatchCount = orders.filter(
+    (o) => o.status === 'Preparing Batch' || o.status === 'Packed'
+  ).length;
+
+  const lowStockCount = products.reduce((count, p) => {
+    const lowVariants = (p.variants || []).filter((v) => v.stock !== undefined && v.stock <= 5);
+    return count + lowVariants.length;
+  }, 0);
+
   const countByStatus = (status) => orders.filter((o) => o.status === status).length;
   const filteredOrders =
     activeOrderTab === 'All' ? orders : orders.filter((o) => o.status === activeOrderTab);
@@ -208,7 +293,7 @@ export default function AdminDashboard() {
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
               <h1 className="text-2xl font-black text-gray-900">Admin Control Center</h1>
-              <p className="text-xs text-gray-500">Manage store orders, delivery updates & product catalog</p>
+              <p className="text-xs text-gray-500">Manage store orders, stock inventory, delivery updates & coupons</p>
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
@@ -261,6 +346,52 @@ export default function AdminDashboard() {
                 <LogOut size={14} />
                 <span>Logout</span>
               </button>
+            </div>
+          </div>
+
+          {/* KPI SUMMARY CARDS */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="bg-emerald-50/80 border border-emerald-200 p-4 rounded-2xl">
+              <div className="flex items-center justify-between text-emerald-800 mb-1">
+                <span className="text-[11px] font-bold uppercase">Gross Revenue</span>
+                <IndianRupee size={15} />
+              </div>
+              <p className="text-xl sm:text-2xl font-black text-gray-900">₹{totalRevenue.toLocaleString('en-IN')}</p>
+              <span className="text-[10px] text-emerald-700 font-semibold">Excludes cancelled orders</span>
+            </div>
+
+            <div className="bg-amber-50/80 border border-amber-200 p-4 rounded-2xl">
+              <div className="flex items-center justify-between text-amber-900 mb-1">
+                <span className="text-[11px] font-bold uppercase">Pending Dispatch</span>
+                <Flame size={15} />
+              </div>
+              <p className="text-xl sm:text-2xl font-black text-gray-900">{pendingDispatchCount}</p>
+              <span className="text-[10px] text-amber-800 font-semibold">Preparing or Packed</span>
+            </div>
+
+            <div className="bg-blue-50/80 border border-blue-200 p-4 rounded-2xl">
+              <div className="flex items-center justify-between text-blue-800 mb-1">
+                <span className="text-[11px] font-bold uppercase">Delivered Orders</span>
+                <CheckCircle size={15} />
+              </div>
+              <p className="text-xl sm:text-2xl font-black text-gray-900">{countByStatus('Delivered')}</p>
+              <span className="text-[10px] text-blue-700 font-semibold">Completed deliveries</span>
+            </div>
+
+            <div
+              onClick={() => setActiveView('products')}
+              className={`p-4 rounded-2xl border cursor-pointer transition ${
+                lowStockCount > 0
+                  ? 'bg-red-50 border-red-200 hover:bg-red-100/70'
+                  : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+              }`}
+            >
+              <div className="flex items-center justify-between text-red-800 mb-1">
+                <span className="text-[11px] font-bold uppercase">Low Stock Alerts</span>
+                <AlertTriangle size={15} />
+              </div>
+              <p className="text-xl sm:text-2xl font-black text-gray-900">{lowStockCount}</p>
+              <span className="text-[10px] text-red-700 font-semibold">Variants with ≤ 5 jars</span>
             </div>
           </div>
 
@@ -320,6 +451,7 @@ export default function AdminDashboard() {
                 { id: 'Packed', label: 'Packed', count: countByStatus('Packed'), icon: Package },
                 { id: 'Out for Delivery', label: 'Out for Delivery', count: countByStatus('Out for Delivery'), icon: Truck },
                 { id: 'Delivered', label: 'Delivered', count: countByStatus('Delivered'), icon: CheckCircle },
+                { id: 'Cancelled', label: 'Cancelled', count: countByStatus('Cancelled'), icon: X },
               ].map((tab) => {
                 const Icon = tab.icon;
                 const isActive = activeOrderTab === tab.id;
@@ -379,7 +511,7 @@ export default function AdminDashboard() {
                         ))}
                       </div>
                       <div className="text-xs font-black text-red-800 pt-2 border-t border-gray-100 flex justify-between">
-                        <span>Total Amount ({order.paymentMethod}):</span>
+                        <span>Total ({order.paymentMethod} • {order.paymentStatus}):</span>
                         <span>₹{order.totalPrice}</span>
                       </div>
                     </div>
@@ -396,6 +528,7 @@ export default function AdminDashboard() {
                           <option value="Packed" className="text-black bg-white">Packed 📦</option>
                           <option value="Out for Delivery" className="text-black bg-white">Out for Delivery 🚚</option>
                           <option value="Delivered" className="text-black bg-white">Delivered ✅</option>
+                          <option value="Cancelled" className="text-black bg-white">Cancelled ❌</option>
                         </select>
                       </div>
                       <div className="text-xs font-bold text-gray-700 flex items-center gap-1.5 mt-4">
@@ -409,11 +542,14 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* VIEW 2: PRODUCT MANAGEMENT */}
+        {/* VIEW 2: PRODUCT & INVENTORY MANAGEMENT */}
         {activeView === 'products' && (
           <div className="space-y-6">
             <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-gray-200">
-              <h3 className="font-bold text-gray-900 text-sm">Active Store Catalog</h3>
+              <div>
+                <h3 className="font-bold text-gray-900 text-sm">Active Store Catalog & Stock</h3>
+                <p className="text-xs text-gray-500">Edit pricing or replenish jar stock counts anytime</p>
+              </div>
               <button
                 onClick={() => setShowAddModal(true)}
                 className="bg-red-800 text-white text-xs font-bold px-4 py-2 rounded-xl hover:bg-red-900 transition flex items-center gap-1.5"
@@ -426,35 +562,62 @@ export default function AdminDashboard() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {products.map((prod) => (
                 <div key={prod._id} className="bg-white rounded-2xl p-4 border border-gray-200 shadow-sm space-y-3">
-                  <img src={prod.images[0]} alt={prod.name} className="h-36 w-full object-cover rounded-xl" />
-                  <div className="flex justify-between items-start">
+                  <img src={prod.images?.[0]} alt={prod.name} className="h-36 w-full object-cover rounded-xl" />
+                  <div className="flex justify-between items-start gap-2">
                     <div>
                       <h4 className="font-bold text-gray-900 text-sm">{prod.name}</h4>
                       <span className="text-[10px] bg-red-100 text-red-800 px-2 py-0.5 rounded-md font-bold inline-block mt-1">
                         🌶️ {prod.spiceLevel || 'Medium'} Spice
                       </span>
                     </div>
-                    <button
-                      onClick={() => handleDeleteProduct(prod._id)}
-                      className="text-red-600 hover:text-red-800 p-1.5 bg-red-50 rounded-lg transition"
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => openEditModal(prod)}
+                        className="text-blue-700 hover:text-blue-900 p-1.5 bg-blue-50 rounded-lg transition"
+                        title="Edit Price & Stock"
+                      >
+                        <Edit2 size={15} />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteProduct(prod._id)}
+                        className="text-red-600 hover:text-red-800 p-1.5 bg-red-50 rounded-lg transition"
+                        title="Delete Pickle"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
                   </div>
                   <p className="text-xs text-gray-500 line-clamp-2">{prod.description}</p>
                   
-                  <div className="pt-2 border-t border-gray-100 space-y-1">
-                    {prod.variants?.map((v, i) => (
-                      <div key={i} className="flex justify-between items-center text-xs">
-                        <span className="font-semibold text-gray-600">{v.weight}:</span>
-                        <div className="flex items-center gap-2">
-                          {v.originalPrice && (
-                            <span className="text-gray-400 line-through text-[11px]">₹{v.originalPrice}</span>
-                          )}
-                          <span className="font-black text-red-800">₹{v.price}</span>
+                  <div className="pt-2 border-t border-gray-100 space-y-1.5">
+                    {prod.variants?.map((v, i) => {
+                      const stockCount = v.stock !== undefined ? v.stock : 25;
+                      const isLow = stockCount <= 5;
+                      return (
+                        <div key={i} className="flex justify-between items-center text-xs">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-gray-700">{v.weight}:</span>
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                stockCount === 0
+                                  ? 'bg-red-100 text-red-800'
+                                  : isLow
+                                  ? 'bg-amber-100 text-amber-900'
+                                  : 'bg-emerald-100 text-emerald-800'
+                              }`}
+                            >
+                              {stockCount === 0 ? 'Out of Stock' : `${stockCount} jars`}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {v.originalPrice && (
+                              <span className="text-gray-400 line-through text-[11px]">₹{v.originalPrice}</span>
+                            )}
+                            <span className="font-black text-red-800">₹{v.price}</span>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               ))}
@@ -576,7 +739,7 @@ export default function AdminDashboard() {
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="text-xs font-bold text-gray-700 block mb-1">250g Offer Price (₹)</label>
+                    <label className="text-xs font-bold text-gray-700 block mb-1">250g Price (₹)</label>
                     <input
                       type="number"
                       required
@@ -586,12 +749,36 @@ export default function AdminDashboard() {
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-bold text-gray-700 block mb-1">500g Offer Price (₹)</label>
+                    <label className="text-xs font-bold text-gray-700 block mb-1">250g Stock (Jars)</label>
+                    <input
+                      type="number"
+                      required
+                      min="0"
+                      value={stock250}
+                      onChange={(e) => setStock250(e.target.value)}
+                      className="w-full text-xs p-2.5 border border-gray-300 rounded-xl text-black bg-white"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs font-bold text-gray-700 block mb-1">500g Price (₹)</label>
                     <input
                       type="number"
                       required
                       value={offerPrice500}
                       onChange={(e) => setOfferPrice500(e.target.value)}
+                      className="w-full text-xs p-2.5 border border-gray-300 rounded-xl text-black bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-700 block mb-1">500g Stock (Jars)</label>
+                    <input
+                      type="number"
+                      required
+                      min="0"
+                      value={stock500}
+                      onChange={(e) => setStock500(e.target.value)}
                       className="w-full text-xs p-2.5 border border-gray-300 rounded-xl text-black bg-white"
                     />
                   </div>
@@ -609,6 +796,132 @@ export default function AdminDashboard() {
                     className="flex-1 bg-red-800 text-white text-xs font-bold py-2.5 rounded-xl hover:bg-red-900"
                   >
                     Save Product
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* EDIT PRODUCT & STOCK MODAL */}
+        {editingProduct && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-3xl p-6 max-w-md w-full space-y-4 shadow-xl">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-black text-gray-900">Edit Pickle & Stock</h3>
+                <button
+                  onClick={() => setEditingProduct(null)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <form onSubmit={handleUpdateProduct} className="space-y-3">
+                <div>
+                  <label className="text-xs font-bold text-gray-700 block mb-1">Pickle Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={editingProduct.name}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, name: e.target.value })}
+                    className="w-full text-xs p-2.5 border border-gray-300 rounded-xl text-black bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-700 block mb-1">Description</label>
+                  <textarea
+                    required
+                    rows="2"
+                    value={editingProduct.description}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, description: e.target.value })}
+                    className="w-full text-xs p-2.5 border border-gray-300 rounded-xl text-black bg-white"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs font-bold text-gray-700 block mb-1">Image URL</label>
+                    <input
+                      type="text"
+                      required
+                      value={editingProduct.image}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, image: e.target.value })}
+                      className="w-full text-xs p-2.5 border border-gray-300 rounded-xl text-black bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-700 block mb-1">Spice Level</label>
+                    <select
+                      value={editingProduct.spiceLevel}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, spiceLevel: e.target.value })}
+                      className="w-full text-xs p-2.5 border border-gray-300 rounded-xl text-black bg-white font-bold"
+                    >
+                      <option value="Mild">Mild</option>
+                      <option value="Medium">Medium</option>
+                      <option value="Spicy">Spicy</option>
+                      <option value="Extra Fiery">Extra Fiery</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs font-bold text-gray-700 block mb-1">250g Price (₹)</label>
+                    <input
+                      type="number"
+                      required
+                      value={editingProduct.price250}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, price250: e.target.value })}
+                      className="w-full text-xs p-2.5 border border-gray-300 rounded-xl text-black bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-700 block mb-1">250g Stock (Jars)</label>
+                    <input
+                      type="number"
+                      required
+                      min="0"
+                      value={editingProduct.stock250}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, stock250: e.target.value })}
+                      className="w-full text-xs p-2.5 border border-gray-300 rounded-xl text-black bg-white font-bold"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs font-bold text-gray-700 block mb-1">500g Price (₹)</label>
+                    <input
+                      type="number"
+                      required
+                      value={editingProduct.price500}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, price500: e.target.value })}
+                      className="w-full text-xs p-2.5 border border-gray-300 rounded-xl text-black bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-700 block mb-1">500g Stock (Jars)</label>
+                    <input
+                      type="number"
+                      required
+                      min="0"
+                      value={editingProduct.stock500}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, stock500: e.target.value })}
+                      className="w-full text-xs p-2.5 border border-gray-300 rounded-xl text-black bg-white font-bold"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingProduct(null)}
+                    className="flex-1 bg-gray-100 text-gray-700 text-xs font-bold py-2.5 rounded-xl"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 bg-red-800 text-white text-xs font-bold py-2.5 rounded-xl hover:bg-red-900"
+                  >
+                    Save Changes
                   </button>
                 </div>
               </form>
@@ -734,7 +1047,7 @@ export default function AdminDashboard() {
                   <span className="text-gray-500 flex items-center gap-1.5">
                     <Shield size={14} className="text-red-800" /> Access Privileges:
                   </span>
-                  <span className="font-bold text-green-700">Orders, Products, Status Control</span>
+                  <span className="font-bold text-green-700">Orders, Products, Stock & Status Control</span>
                 </div>
               </div>
 

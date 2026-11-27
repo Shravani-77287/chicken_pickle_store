@@ -158,13 +158,11 @@ export default function HomePage() {
                 </button>
 
                 <Link
-                href="/orders"
-                onClick={() => setShowProfileModal(false)}
-                className="flex-1 bg-red-800 text-white font-bold py-2.5 rounded-xl hover:bg-red-900 transition text-xs flex items-center justify-center gap-1.5"
-              >
-                <Truck size={15} />
-                <span>My Orders</span>
-              </Link>
+                  href="/orders"
+                  className="text-xs font-bold text-gray-800 bg-gray-100 hover:bg-gray-200 px-3 py-2 rounded-full transition"
+                >
+                  My Orders
+                </Link>
 
                 <button
                   onClick={handleCustomerLogout}
@@ -383,6 +381,7 @@ export default function HomePage() {
                     </div>
                   </div>
 
+                  {/* Price, Low Stock Warning & Out-of-Stock Handling */}
                   <div className="p-5 pt-0">
                     <div className="flex items-center justify-between border-t border-gray-100 pt-4">
                       <div>
@@ -395,15 +394,28 @@ export default function HomePage() {
                           </span>
                           <span className="text-xl font-black text-red-800">₹{offerPrice}</span>
                         </div>
+                        {currentVariant?.stock !== undefined &&
+                          currentVariant.stock > 0 &&
+                          currentVariant.stock <= 5 && (
+                            <span className="text-[10px] font-bold text-amber-700 block mt-0.5">
+                              Only {currentVariant.stock} jars left!
+                            </span>
+                          )}
                       </div>
 
-                      <button
-                        onClick={() => addToCart(product, currentVariant)}
-                        className="bg-red-800 text-white px-4 py-2.5 rounded-xl text-xs font-bold hover:bg-red-900 transition flex items-center gap-1.5 shadow-sm"
-                      >
-                        <ShoppingBag size={15} />
-                        <span>Add to Cart</span>
-                      </button>
+                      {currentVariant?.stock !== undefined && currentVariant.stock <= 0 ? (
+                        <span className="bg-gray-200 text-gray-500 px-4 py-2.5 rounded-xl text-xs font-bold cursor-not-allowed">
+                          Out of Stock
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => addToCart(product, currentVariant)}
+                          className="bg-red-800 text-white px-4 py-2.5 rounded-xl text-xs font-bold hover:bg-red-900 transition flex items-center gap-1.5 shadow-sm"
+                        >
+                          <ShoppingBag size={15} />
+                          <span>Add to Cart</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -457,7 +469,7 @@ export default function HomePage() {
 
             <div className="flex gap-2">
               <Link
-                href="/track"
+                href="/orders"
                 onClick={() => setShowProfileModal(false)}
                 className="flex-1 bg-red-800 text-white font-bold py-2.5 rounded-xl hover:bg-red-900 transition text-xs flex items-center justify-center gap-1.5"
               >

@@ -52,7 +52,7 @@ router.get('/:slug', async (req, res) => {
   }
 });
 
-// POST /api/products - Admin: Add new product
+// POST /api/products - Admin: Add new product with variant stock
 router.post('/', requireAdmin, async (req, res) => {
   try {
     const {
@@ -80,13 +80,20 @@ router.post('/', requireAdmin, async (req, res) => {
       slug ||
       `${name.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-')}-${Date.now()}`;
 
+    const formattedVariants = (variants || []).map((v) => ({
+      weight: v.weight,
+      originalPrice: Number(v.originalPrice) || Number(v.price) + 50,
+      price: Number(v.price),
+      stock: v.stock !== undefined ? Number(v.stock) : 25,
+    }));
+
     const product = await Product.create({
       name: name.trim(),
       slug: finalSlug,
       description: description.trim(),
       images: imageList,
       spiceLevel: spiceLevel || 'Medium',
-      variants,
+      variants: formattedVariants,
       ...(ingredients && { ingredients }),
       ...(allergens && { allergens }),
       ...(shelfLife && { shelfLife }),
@@ -98,6 +105,52 @@ router.post('/', requireAdmin, async (req, res) => {
     res.status(201).json(product);
   } catch (error) {
     res.status(500).json({ message: error.message || 'Failed to add product' });
+  }
+});
+
+// PUT /api/products/:id - Admin: Edit product details, prices & stock
+router.put('/:id', requireAdmin, async (req, res) => {
+  try {
+    const {
+      name,
+      description,
+      image,
+      images,
+      spiceLevel,
+      variants,
+      ingredients,
+      shelfLife,
+      fssaiNumber,
+    } = req.body;
+
+    const product = await Product.findById(req.params.id);
+    if (!product) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
+
+    if (name) product.name = name.trim();
+    if (description) product.description = description.trim();
+    if (spiceLevel) product.spiceLevel = spiceLevel;
+    if (images?.length) product.images = images;
+    else if (image) product.images = [image];
+
+    if (Array.isArray(variants) && variants.length > 0) {
+      product.variants = variants.map((v) => ({
+        weight: v.weight,
+        originalPrice: Number(v.originalPrice) || Number(v.price) + 50,
+        price: Number(v.price),
+        stock: v.stock !== undefined ? Math.max(0, Number(v.stock)) : 25,
+      }));
+    }
+
+    if (ingredients) product.ingredients = ingredients;
+    if (shelfLife) product.shelfLife = shelfLife;
+    if (fssaiNumber) product.fssaiNumber = fssaiNumber;
+
+    const updated = await product.save();
+    res.json(updated);
+  } catch (error) {
+    res.status(500).json({ message: error.message || 'Failed to update product' });
   }
 });
 

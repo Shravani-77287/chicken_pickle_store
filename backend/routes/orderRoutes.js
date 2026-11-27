@@ -10,7 +10,6 @@ const User = require('../models/User');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'chicken_pickle_secret_key_2026';
 
-// Admin verification middleware
 const requireAdmin = (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
@@ -28,7 +27,6 @@ const requireAdmin = (req, res, next) => {
   }
 };
 
-// Customer verification middleware
 const requireCustomer = (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
@@ -43,7 +41,6 @@ const requireCustomer = (req, res, next) => {
   }
 };
 
-// Optional user extraction for checkout
 const extractUserId = (req) => {
   try {
     const authHeader = req.headers.authorization;
@@ -55,7 +52,7 @@ const extractUserId = (req) => {
   return null;
 };
 
-// POST /api/orders - Create Order with Server-Side Price & Coupon Calculation
+// POST /api/orders - Validate Stock, Recalculate Price & Deduct Inventory
 router.post('/', async (req, res) => {
   try {
     const {
@@ -79,6 +76,7 @@ router.post('/', async (req, res) => {
     let calculatedItemsPrice = 0;
     const verifiedItems = [];
 
+    // 1. Verify prices & check available stock from MongoDB
     for (const item of orderItems) {
       const qty = Math.max(1, Number(item.quantity) || 1);
       let unitPrice = Number(item.price) || 0;
@@ -90,6 +88,14 @@ router.post('/', async (req, res) => {
           productName = dbProduct.name;
           const dbVariant = dbProduct.variants?.find((v) => v.weight === item.weight);
           if (dbVariant) {
+            if (dbVariant.stock !== undefined && dbVariant.stock < qty) {
+              return res.status(400).json({
+                message:
+                  dbVariant.stock === 0
+                    ? `${dbProduct.name} (${item.weight}) is currently Out of Stock.`
+                    : `Only ${dbVariant.stock} jar(s) of ${dbProduct.name} (${item.weight}) left in stock.`,
+              });
+            }
             unitPrice = dbVariant.price;
           }
         }
@@ -105,6 +111,7 @@ router.post('/', async (req, res) => {
       });
     }
 
+    // 2. Re-validate coupon server-side
     let discountPrice = 0;
     let appliedCode = '';
 
@@ -124,6 +131,7 @@ router.post('/', async (req, res) => {
       }
     }
 
+    // 3. Calculate shipping, handling & grand total
     const shippingPrice = calculatedItemsPrice >= 499 ? 0 : 30;
     const handlingPrice = 12;
     const totalPrice = Math.max(0, calculatedItemsPrice - discountPrice + shippingPrice + handlingPrice);
@@ -153,6 +161,16 @@ router.post('/', async (req, res) => {
       couponCode: appliedCode,
     });
 
+    // 4. Atomically deduct variant stock
+    for (const item of verifiedItems) {
+      if (item.product && mongoose.Types.ObjectId.isValid(item.product)) {
+        await Product.updateOne(
+          { _id: item.product, 'variants.weight': item.weight },
+          { $inc: { 'variants.$.stock': -item.quantity } }
+        );
+      }
+    }
+
     res.status(201).json(order);
   } catch (error) {
     console.error('Create Order Error:', error);
@@ -176,7 +194,7 @@ router.get('/my-orders', requireCustomer, async (req, res) => {
   }
 });
 
-// PUT /api/orders/:id/cancel - Customer: Cancel order before it is packed
+// PUT /api/orders/:id/cancel - Customer: Cancel order & restore variant stock
 router.put('/:id/cancel', requireCustomer, async (req, res) => {
   try {
     const order = await Order.findById(req.params.id);
@@ -202,7 +220,17 @@ router.put('/:id/cancel', requireCustomer, async (req, res) => {
     order.status = 'Cancelled';
     await order.save();
 
-    res.json({ message: 'Order cancelled successfully', order });
+    // Restore stock for cancelled items
+    for (const item of order.orderItems || []) {
+      if (item.product && mongoose.Types.ObjectId.isValid(item.product)) {
+        await Product.updateOne(
+          { _id: item.product, 'variants.weight': item.weight },
+          { $inc: { 'variants.$.stock': item.quantity } }
+        );
+      }
+    }
+
+    res.json({ message: 'Order cancelled and stock restored', order });
   } catch (error) {
     res.status(500).json({ message: 'Failed to cancel order' });
   }
