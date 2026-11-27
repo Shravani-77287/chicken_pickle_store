@@ -59,26 +59,37 @@ function CartDrawer() {
   const [couponLoading, setCouponLoading] = useState(false);
   const [couponError, setCouponError] = useState('');
 
+  // Dynamic Customer State (loaded from logged-in user or saved address)
   const [customer, setCustomer] = useState({
-    name: 'Shravani',
-    phone: '9876543210',
-    address: 'Malla Reddy Engineering College for Women, Maisammaguda',
-    pincode: '500100',
+    name: '',
+    phone: '',
+    address: '',
+    pincode: '',
   });
 
-  // Reset order success view when items change
+  // Pre-fill customer info when drawer opens
+  useEffect(() => {
+    if (!isCartOpen) return;
+    try {
+      const rawUser = localStorage.getItem('customer_user');
+      const savedAddress = localStorage.getItem('pickle_saved_address');
+      const userObj = rawUser ? JSON.parse(rawUser) : null;
+      const addrObj = savedAddress ? JSON.parse(savedAddress) : null;
+
+      setCustomer((prev) => ({
+        name: prev.name || userObj?.name || '',
+        phone: prev.phone || userObj?.phone || '',
+        address: prev.address || addrObj?.address || '',
+        pincode: prev.pincode || addrObj?.pincode || '',
+      }));
+    } catch (e) {}
+  }, [isCartOpen]);
+
   useEffect(() => {
     if (items.length > 0 && orderSuccess) {
       setOrderSuccess(false);
     }
-  }, [items.length]);
-
-  const handleCloseDrawer = () => {
-    setOrderSuccess(false);
-    setIsCartOpen(false);
-  };
-
-  if (!isCartOpen) return null;
+  }, [items.length, orderSuccess]);
 
   const handlingCharge = items.length > 0 ? 12 : 0;
 
@@ -87,6 +98,32 @@ function CartDrawer() {
     0
   );
 
+  // Re-validate coupon automatically when cart items change
+  useEffect(() => {
+    if (!appliedCoupon?.code) return;
+    if (itemsTotal === 0) {
+      setAppliedCoupon(null);
+      return;
+    }
+
+    API.post('/coupons/apply', {
+      code: appliedCoupon.code,
+      itemsTotal,
+    })
+      .then((res) => setAppliedCoupon(res.data))
+      .catch((err) => {
+        setAppliedCoupon(null);
+        setCouponError(err.response?.data?.message || 'Coupon removed: minimum order not met');
+      });
+  }, [itemsTotal, appliedCoupon?.code]);
+
+  const handleCloseDrawer = () => {
+    setOrderSuccess(false);
+    setIsCartOpen(false);
+  };
+
+  if (!isCartOpen) return null;
+
   const itemsOriginalTotal = items.reduce((acc, item) => {
     const origPrice =
       item.selectedVariant?.originalPrice || (item.selectedVariant?.price || 0) + 50;
@@ -94,7 +131,6 @@ function CartDrawer() {
   }, 0);
 
   const itemSavings = itemsOriginalTotal - itemsTotal;
-
   const isFreeDelivery = itemsTotal >= 499 || items.length === 0;
   const deliveryCharge = isFreeDelivery ? 0 : 30;
   const deliverySavings = isFreeDelivery && items.length > 0 ? 30 : 0;
@@ -103,7 +139,6 @@ function CartDrawer() {
   const grandTotal = Math.max(0, itemsTotal - couponDiscount + deliveryCharge + handlingCharge);
   const totalSavings = itemSavings + deliverySavings + couponDiscount;
 
-  // Coupon Handlers
   const handleApplyCoupon = async (e) => {
     e.preventDefault();
     if (!couponCode.trim()) return;
@@ -132,9 +167,30 @@ function CartDrawer() {
     setCouponError('');
   };
 
+  const handleSaveAddress = (e) => {
+    e.preventDefault();
+    localStorage.setItem(
+      'pickle_saved_address',
+      JSON.stringify({ address: customer.address, pincode: customer.pincode })
+    );
+    setShowAddressModal(false);
+  };
+
+  const isAddressComplete =
+    customer.name.trim() &&
+    customer.phone.trim().length >= 10 &&
+    customer.address.trim() &&
+    customer.pincode.trim().length === 6;
+
   // ORDER SUBMISSION HANDLER
   const handlePlaceOrder = async () => {
     if (items.length === 0) return;
+
+    if (!isAddressComplete) {
+      setShowAddressModal(true);
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -161,6 +217,7 @@ function CartDrawer() {
       if (paymentMethod === 'Cash on Delivery (COD)') {
         await API.post('/orders', orderPayload);
         setOrderSuccess(true);
+        setAppliedCoupon(null);
         clearCart();
         setLoading(false);
         return;
@@ -174,12 +231,10 @@ function CartDrawer() {
         return;
       }
 
-      // 1. Create Order on Backend
       const { data: rzpOrder } = await API.post('/payment/create-order', {
         amount: grandTotal,
       });
 
-      // 2. Open Razorpay Popup
       const options = {
         key: rzpOrder.keyId,
         amount: rzpOrder.amount,
@@ -196,14 +251,12 @@ function CartDrawer() {
         },
         handler: async function (response) {
           try {
-            // 3. Verify Payment Signature
             await API.post('/payment/verify', {
               razorpay_order_id: response.razorpay_order_id,
               razorpay_payment_id: response.razorpay_payment_id,
               razorpay_signature: response.razorpay_signature,
             });
 
-            // 4. Save Order to Database
             await API.post('/orders', {
               ...orderPayload,
               paymentResult: {
@@ -213,6 +266,7 @@ function CartDrawer() {
             });
 
             setOrderSuccess(true);
+            setAppliedCoupon(null);
             clearCart();
           } catch (error) {
             alert('Payment verification failed. Please contact support.');
@@ -266,7 +320,7 @@ function CartDrawer() {
             <CheckCircle2 size={64} className="text-emerald-500 animate-bounce" />
             <h3 className="text-2xl font-black text-white">Order Placed Successfully!</h3>
             <p className="text-xs text-gray-400 max-w-xs">
-              We have received your order for fresh homestyle chicken pickle. WhatsApp notification sent to{' '}
+              We have received your order for fresh homestyle chicken pickle. Track live updates using{' '}
               <span className="text-emerald-400 font-bold">{customer.phone}</span>.
             </p>
             <button
@@ -297,7 +351,16 @@ function CartDrawer() {
             
             {/* Cart Items */}
             <div className="bg-[#1e1e1e] p-4 rounded-2xl border border-gray-800 space-y-3">
-              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Ordered Items</h3>
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Ordered Items</h3>
+                <button
+                  type="button"
+                  onClick={clearCart}
+                  className="text-[11px] font-bold text-red-400 hover:text-red-300"
+                >
+                  Clear All
+                </button>
+              </div>
               {items.map((item) => (
                 <div key={`${item._id}-${item.selectedVariant?.weight}`} className="flex items-center justify-between text-xs py-2 border-b border-gray-800/80 last:border-none">
                   <div className="space-y-0.5">
@@ -516,12 +579,25 @@ function CartDrawer() {
             </div>
 
             {/* Delivery Address */}
-            <div className="bg-[#1e1e1e] p-4 rounded-2xl border border-gray-800 flex items-center justify-between">
+            <div className={`bg-[#1e1e1e] p-4 rounded-2xl border flex items-center justify-between ${isAddressComplete ? 'border-gray-800' : 'border-amber-500/70'}`}>
               <div className="flex items-start gap-2.5 overflow-hidden">
                 <MapPin size={18} className="text-emerald-400 mt-0.5 shrink-0" />
                 <div className="overflow-hidden">
-                  <p className="text-xs font-bold text-white">Delivering to <span className="text-emerald-400">Home</span></p>
-                  <p className="text-[11px] text-gray-400 truncate">{customer.address}</p>
+                  {isAddressComplete ? (
+                    <>
+                      <p className="text-xs font-bold text-white">
+                        Delivering to <span className="text-emerald-400">{customer.name}</span> ({customer.phone})
+                      </p>
+                      <p className="text-[11px] text-gray-400 truncate">
+                        {customer.address} - {customer.pincode}
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-xs font-bold text-amber-400">Delivery Address Required</p>
+                      <p className="text-[11px] text-gray-400">Add your address & 6-digit PIN code to checkout</p>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -529,7 +605,7 @@ function CartDrawer() {
                 onClick={() => setShowAddressModal(true)}
                 className="text-xs font-extrabold text-emerald-400 hover:underline shrink-0 ml-2"
               >
-                Change
+                {isAddressComplete ? 'Change' : 'Add'}
               </button>
             </div>
           </div>
@@ -590,7 +666,13 @@ function CartDrawer() {
                   </>
                 ) : (
                   <>
-                    <span>{paymentMethod.includes('Razorpay') ? 'Pay & Place Order' : 'Place Order'}</span>
+                    <span>
+                      {!isAddressComplete
+                        ? 'Add Delivery Address'
+                        : paymentMethod.includes('Razorpay')
+                        ? 'Pay & Place Order'
+                        : 'Place Order'}
+                    </span>
                     <ChevronRight size={20} className="stroke-[3]" />
                   </>
                 )}
@@ -601,41 +683,63 @@ function CartDrawer() {
 
         {showAddressModal && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-            <div className="bg-[#1e1e1e] p-6 rounded-3xl max-w-sm w-full space-y-4 border border-gray-800 text-white">
-              <h3 className="font-black text-lg">Update Delivery Address</h3>
+            <form
+              onSubmit={handleSaveAddress}
+              className="bg-[#1e1e1e] p-6 rounded-3xl max-w-sm w-full space-y-4 border border-gray-800 text-white"
+            >
+              <div className="flex items-center justify-between">
+                <h3 className="font-black text-lg">Delivery Details</h3>
+                <button
+                  type="button"
+                  onClick={() => setShowAddressModal(false)}
+                  className="text-gray-400 hover:text-white"
+                >
+                  <X size={18} />
+                </button>
+              </div>
 
               <div className="space-y-3 text-xs">
                 <div>
-                  <label className="text-gray-400 block mb-1">Full Name</label>
+                  <label className="text-gray-400 block mb-1">Full Name *</label>
                   <input
                     type="text"
+                    required
+                    placeholder="Enter recipient name"
                     value={customer.name}
                     onChange={(e) => setCustomer({ ...customer, name: e.target.value })}
                     className="w-full p-2.5 rounded-xl bg-[#2a2a2a] border border-gray-700 text-white"
                   />
                 </div>
                 <div>
-                  <label className="text-gray-400 block mb-1">Phone Number</label>
+                  <label className="text-gray-400 block mb-1">10-Digit Phone Number *</label>
                   <input
                     type="tel"
+                    required
+                    pattern="[0-9]{10}"
+                    placeholder="9876543210"
                     value={customer.phone}
                     onChange={(e) => setCustomer({ ...customer, phone: e.target.value })}
                     className="w-full p-2.5 rounded-xl bg-[#2a2a2a] border border-gray-700 text-white"
                   />
                 </div>
                 <div>
-                  <label className="text-gray-400 block mb-1">Delivery Address</label>
+                  <label className="text-gray-400 block mb-1">Full Delivery Address *</label>
                   <textarea
                     rows="2"
+                    required
+                    placeholder="Flat/House No., Street, Landmark, City"
                     value={customer.address}
                     onChange={(e) => setCustomer({ ...customer, address: e.target.value })}
                     className="w-full p-2.5 rounded-xl bg-[#2a2a2a] border border-gray-700 text-white"
                   />
                 </div>
                 <div>
-                  <label className="text-gray-400 block mb-1">Pincode</label>
+                  <label className="text-gray-400 block mb-1">6-Digit PIN Code *</label>
                   <input
                     type="text"
+                    required
+                    pattern="[0-9]{6}"
+                    placeholder="500001"
                     value={customer.pincode}
                     onChange={(e) => setCustomer({ ...customer, pincode: e.target.value })}
                     className="w-full p-2.5 rounded-xl bg-[#2a2a2a] border border-gray-700 text-white"
@@ -644,12 +748,12 @@ function CartDrawer() {
               </div>
 
               <button
-                onClick={() => setShowAddressModal(false)}
+                type="submit"
                 className="w-full bg-emerald-600 text-white font-bold py-2.5 rounded-xl text-xs hover:bg-emerald-700"
               >
                 Save & Continue
               </button>
-            </div>
+            </form>
           </div>
         )}
 
