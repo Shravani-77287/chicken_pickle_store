@@ -6,14 +6,20 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'chicken_pickle_secret_key_2026';
+const OWNER_SECRET = process.env.ADMIN_REGISTRATION_SECRET || 'PICKLE_OWNER_2026';
 
 // POST /api/auth/register
 router.post('/register', async (req, res) => {
   try {
-    const { name, email, phone, password, role, securityQuestion, securityAnswer } = req.body;
+    const { name, email, phone, password, role, adminSecret, securityQuestion, securityAnswer } = req.body;
 
     if (!name || !email || !password || !securityQuestion || !securityAnswer) {
       return res.status(400).json({ message: 'All fields including security question are required' });
+    }
+
+    const userRole = role === 'admin' ? 'admin' : 'customer';
+    if (userRole === 'admin' && adminSecret !== OWNER_SECRET) {
+      return res.status(403).json({ message: 'Invalid Owner Secret Code' });
     }
 
     const existingUser = await User.findOne({ email: email.toLowerCase().trim() });
@@ -23,7 +29,6 @@ router.post('/register', async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
     const hashedAnswer = await bcrypt.hash(securityAnswer.trim().toLowerCase(), 10);
-    const userRole = role === 'admin' ? 'admin' : 'customer';
 
     const user = await User.create({
       name: name.trim(),
@@ -54,10 +59,8 @@ router.post('/register', async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Register Error:', error);
     if (error.code === 11000) {
-      const duplicateField = Object.keys(error.keyPattern || {})[0] || 'email';
-      return res.status(400).json({ message: `An account with this ${duplicateField} already exists` });
+      return res.status(400).json({ message: 'An account with this email already exists' });
     }
     res.status(500).json({ message: error.message || 'Failed to create account' });
   }
@@ -67,23 +70,18 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-
     if (!email || !password) {
       return res.status(400).json({ message: 'Email and password are required' });
     }
 
     const user = await User.findOne({ email: email.toLowerCase().trim() });
-    if (!user) {
+    if (!user || !(await bcrypt.compare(password, user.password))) {
       return res.status(401).json({ message: 'Invalid email or password' });
     }
 
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(401).json({ message: 'Invalid email or password' });
-    }
-
+    const isAdmin = Boolean(user.isAdmin || user.role === 'admin');
     const token = jwt.sign(
-      { id: user._id, role: user.role, isAdmin: user.isAdmin || user.role === 'admin' },
+      { id: user._id, role: user.role, isAdmin },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -96,11 +94,10 @@ router.post('/login', async (req, res) => {
         email: user.email,
         phone: user.phone,
         role: user.role,
-        isAdmin: user.isAdmin || user.role === 'admin',
+        isAdmin,
       },
     });
   } catch (error) {
-    console.error('Login Error:', error);
     res.status(500).json({ message: error.message || 'Login failed' });
   }
 });
@@ -109,27 +106,13 @@ router.post('/login', async (req, res) => {
 router.post('/forgot-password/question', async (req, res) => {
   try {
     const { email } = req.body;
-    if (!email) {
-      return res.status(400).json({ message: 'Please enter your registered email' });
+    const user = await User.findOne({ email: email?.toLowerCase().trim() });
+    if (!user || !user.securityAnswer) {
+      return res.status(404).json({ message: 'Account or security question not found' });
     }
-
-    const user = await User.findOne({ email: email.toLowerCase().trim() });
-    if (!user) {
-      return res.status(404).json({ message: 'No account found with this email address' });
-    }
-
-    if (!user.securityAnswer) {
-      return res.status(400).json({
-        message: 'Security question was not set up for this account. Please register a new account.',
-      });
-    }
-
-    res.json({
-      email: user.email,
-      securityQuestion: user.securityQuestion,
-    });
+    res.json({ email: user.email, securityQuestion: user.securityQuestion });
   } catch (error) {
-    res.status(500).json({ message: error.message || 'Failed to verify email' });
+    res.status(500).json({ message: 'Failed to verify email' });
   }
 });
 
@@ -137,32 +120,25 @@ router.post('/forgot-password/question', async (req, res) => {
 router.post('/forgot-password/reset', async (req, res) => {
   try {
     const { email, securityAnswer, newPassword } = req.body;
-
     if (!email || !securityAnswer || !newPassword) {
-      return res.status(400).json({ message: 'Please answer the security question and enter a new password' });
+      return res.status(400).json({ message: 'All fields are required' });
     }
 
     const user = await User.findOne({ email: email.toLowerCase().trim() });
     if (!user || !user.securityAnswer) {
-      return res.status(404).json({ message: 'Account or security question not found' });
+      return res.status(404).json({ message: 'Account not found' });
     }
 
-    const isAnswerValid = await bcrypt.compare(
-      securityAnswer.trim().toLowerCase(),
-      user.securityAnswer
-    );
-
-    if (!isAnswerValid) {
-      return res.status(401).json({ message: 'Incorrect security answer. Please try again.' });
+    const isValid = await bcrypt.compare(securityAnswer.trim().toLowerCase(), user.securityAnswer);
+    if (!isValid) {
+      return res.status(401).json({ message: 'Incorrect security answer' });
     }
 
     user.password = await bcrypt.hash(newPassword, 10);
     await user.save();
-
-    res.json({ message: 'Password reset successful! Please sign in with your new password.' });
+    res.json({ message: 'Password reset successful! Please sign in.' });
   } catch (error) {
-    console.error('Reset Password Error:', error);
-    res.status(500).json({ message: error.message || 'Failed to reset password' });
+    res.status(500).json({ message: 'Failed to reset password' });
   }
 });
 
@@ -170,18 +146,12 @@ router.post('/forgot-password/reset', async (req, res) => {
 router.get('/me', async (req, res) => {
   try {
     const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    if (!authHeader?.startsWith('Bearer ')) {
       return res.status(401).json({ message: 'Not authorized' });
     }
-
-    const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(authHeader.split(' ')[1], JWT_SECRET);
     const user = await User.findById(decoded.id).select('-password -securityAnswer');
-
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
+    if (!user) return res.status(404).json({ message: 'User not found' });
     res.json(user);
   } catch (error) {
     res.status(401).json({ message: 'Invalid or expired token' });
