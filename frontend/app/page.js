@@ -157,6 +157,15 @@ export default function HomePage() {
                   <span>{customerUser.name}</span>
                 </button>
 
+                <Link
+                href="/orders"
+                onClick={() => setShowProfileModal(false)}
+                className="flex-1 bg-red-800 text-white font-bold py-2.5 rounded-xl hover:bg-red-900 transition text-xs flex items-center justify-center gap-1.5"
+              >
+                <Truck size={15} />
+                <span>My Orders</span>
+              </Link>
+
                 <button
                   onClick={handleCustomerLogout}
                   className="text-xs font-bold text-red-800 bg-red-50 hover:bg-red-100 px-3 py-2 rounded-full transition flex items-center gap-1.5 border border-red-200"

@@ -6,6 +6,7 @@ const jwt = require('jsonwebtoken');
 const Order = require('../models/Order');
 const Product = require('../models/Product');
 const Coupon = require('../models/Coupon');
+const User = require('../models/User');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'chicken_pickle_secret_key_2026';
 
@@ -27,7 +28,22 @@ const requireAdmin = (req, res, next) => {
   }
 };
 
-// Optional user extraction (supports both logged-in customers and guests)
+// Customer verification middleware
+const requireCustomer = (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return res.status(401).json({ message: 'Please sign in to view your orders' });
+    }
+    const decoded = jwt.verify(authHeader.split(' ')[1], JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (error) {
+    res.status(401).json({ message: 'Session expired. Please sign in again.' });
+  }
+};
+
+// Optional user extraction for checkout
 const extractUserId = (req) => {
   try {
     const authHeader = req.headers.authorization;
@@ -60,7 +76,6 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ message: 'Your cart is empty' });
     }
 
-    // 1. Recalculate true item prices from MongoDB
     let calculatedItemsPrice = 0;
     const verifiedItems = [];
 
@@ -90,7 +105,6 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // 2. Re-validate coupon server-side
     let discountPrice = 0;
     let appliedCode = '';
 
@@ -110,7 +124,6 @@ router.post('/', async (req, res) => {
       }
     }
 
-    // 3. Calculate shipping, handling & final grand total
     const shippingPrice = calculatedItemsPrice >= 499 ? 0 : 30;
     const handlingPrice = 12;
     const totalPrice = Math.max(0, calculatedItemsPrice - discountPrice + shippingPrice + handlingPrice);
@@ -144,6 +157,54 @@ router.post('/', async (req, res) => {
   } catch (error) {
     console.error('Create Order Error:', error);
     res.status(500).json({ message: error.message || 'Failed to place order' });
+  }
+});
+
+// GET /api/orders/my-orders - Customer: Fetch logged-in user's orders
+router.get('/my-orders', requireCustomer, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    const conditions = [{ user: req.user.id }];
+    if (user?.phone) {
+      conditions.push({ 'customer.phone': user.phone });
+    }
+
+    const orders = await Order.find({ $or: conditions }).sort({ createdAt: -1 });
+    res.json(orders);
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to load your orders' });
+  }
+});
+
+// PUT /api/orders/:id/cancel - Customer: Cancel order before it is packed
+router.put('/:id/cancel', requireCustomer, async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+
+    const user = await User.findById(req.user.id);
+    const isOwner =
+      (order.user && String(order.user) === String(req.user.id)) ||
+      (user?.phone && order.customer?.phone === user.phone);
+
+    if (!isOwner) {
+      return res.status(403).json({ message: 'You are not authorized to cancel this order' });
+    }
+
+    if (order.status !== 'Preparing Batch') {
+      return res.status(400).json({
+        message: `Cannot cancel order because it is already "${order.status}".`,
+      });
+    }
+
+    order.status = 'Cancelled';
+    await order.save();
+
+    res.json({ message: 'Order cancelled successfully', order });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to cancel order' });
   }
 });
 
