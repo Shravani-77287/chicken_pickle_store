@@ -187,20 +187,23 @@ export default function HomePage() {
                   className="bg-white rounded-2xl shadow-sm border border-amber-200 overflow-hidden hover:shadow-md transition flex flex-col justify-between"
                 >
                   <div>
-                    <div className="h-48 bg-gray-200 relative overflow-hidden">
-                      <img
-                        src={product.images[0]}
-                        alt={product.name}
-                        className="w-full h-full object-cover"
-                      />
-                      <span className="absolute top-3 left-3 bg-red-800 text-white text-xs px-2 py-1 rounded-md font-semibold">
-                        🌶️ {product.spiceLevel || 'Medium'} Spice
-                      </span>
+                    {/* Clickable Product Image -> Opens Product Details Page */}
+                    <Link href={`/product/${product.slug || product._id}`} className="block">
+                      <div className="h-48 bg-gray-200 relative overflow-hidden">
+                        <img
+                          src={product.images[0]}
+                          alt={product.name}
+                          className="w-full h-full object-cover hover:scale-105 transition duration-300"
+                        />
+                        <span className="absolute top-3 left-3 bg-red-800 text-white text-xs px-2 py-1 rounded-md font-semibold">
+                          🌶️ {product.spiceLevel || 'Medium'} Spice
+                        </span>
 
-                      <span className="absolute top-3 right-3 bg-green-600 text-white text-xs px-2 py-1 rounded-md font-black">
-                        {discountPercent}% OFF
-                      </span>
-                    </div>
+                        <span className="absolute top-3 right-3 bg-green-600 text-white text-xs px-2 py-1 rounded-md font-black">
+                          {discountPercent}% OFF
+                        </span>
+                      </div>
+                    </Link>
 
                     <div className="p-5 space-y-3">
                       <div className="flex items-center gap-1 text-amber-500 text-xs font-bold">
@@ -210,7 +213,13 @@ export default function HomePage() {
                         </span>
                       </div>
 
-                      <h4 className="font-bold text-lg text-gray-900">{product.name}</h4>
+                      {/* Clickable Product Title -> Opens Product Details Page */}
+                      <Link
+                        href={`/product/${product.slug || product._id}`}
+                        className="block hover:text-red-800 transition"
+                      >
+                        <h4 className="font-bold text-lg text-gray-900">{product.name}</h4>
+                      </Link>
                       <p className="text-xs text-gray-500 line-clamp-2">{product.description}</p>
 
                       <div>
