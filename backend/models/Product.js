@@ -1,6 +1,15 @@
 // backend/models/Product.js
 const mongoose = require('mongoose');
 
+const getDefaultDates = () => {
+  const now = new Date();
+  const mfg = now.toISOString().slice(0, 10);
+  const expDate = new Date(now);
+  expDate.setMonth(expDate.getMonth() + 4);
+  const exp = expDate.toISOString().slice(0, 10);
+  return { mfg, exp };
+};
+
 const productSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true },
@@ -21,11 +30,26 @@ const productSchema = new mongoose.Schema(
         stock: { type: Number, default: 25 },
       },
     ],
+    // Batch & Expiry Traceability (FSSAI Mandatory)
+    batchCode: {
+      type: String,
+      default: () => `BATCH-${new Date().toISOString().slice(0, 7).replace('-', '')}-A`,
+      trim: true,
+    },
+    mfgDate: {
+      type: String,
+      default: () => getDefaultDates().mfg,
+    },
+    expiryDate: {
+      type: String,
+      default: () => getDefaultDates().exp,
+    },
     // Indian FSSAI & Food Labelling Disclosures
     isNonVeg: { type: Boolean, default: true },
     ingredients: {
       type: String,
-      default: 'Fresh Boneless Chicken, Cold-Pressed Groundnut Oil, Guntur Red Chilli Powder, Garlic, Ginger, Turmeric, Fenugreek, Mustard Seeds, Curry Leaves, Lemon Juice, Iodized Salt.',
+      default:
+        'Fresh Boneless Chicken, Cold-Pressed Groundnut Oil, Guntur Red Chilli Powder, Garlic, Ginger, Turmeric, Fenugreek, Mustard Seeds, Curry Leaves, Lemon Juice, Iodized Salt.',
     },
     allergens: {
       type: String,

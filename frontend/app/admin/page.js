@@ -29,7 +29,19 @@ import {
   Download,
 } from 'lucide-react';
 
+const getDefaultBatchDates = () => {
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+  const expObj = new Date(now);
+  expObj.setMonth(expObj.getMonth() + 4);
+  const expiry = expObj.toISOString().slice(0, 10);
+  const batch = `BATCH-${today.slice(0, 7).replace('-', '')}-A`;
+  return { today, expiry, batch };
+};
+
 export default function AdminDashboard() {
+  const defaults = getDefaultBatchDates();
+
   const [activeView, setActiveView] = useState('orders');
   const [adminProfile, setAdminProfile] = useState(null);
   const [showAdminProfileModal, setShowAdminProfileModal] = useState(false);
@@ -49,6 +61,9 @@ export default function AdminDashboard() {
   const [newProductDesc, setNewProductDesc] = useState('');
   const [newProductImage, setNewProductImage] = useState('');
   const [newProductSpice, setNewProductSpice] = useState('Medium');
+  const [newBatchCode, setNewBatchCode] = useState(defaults.batch);
+  const [newMfgDate, setNewMfgDate] = useState(defaults.today);
+  const [newExpiryDate, setNewExpiryDate] = useState(defaults.expiry);
   const [origPrice250, setOrigPrice250] = useState('350');
   const [offerPrice250, setOfferPrice250] = useState('299');
   const [stock250, setStock250] = useState('25');
@@ -183,6 +198,9 @@ export default function AdminDashboard() {
         description: newProductDesc,
         image: newProductImage,
         spiceLevel: newProductSpice,
+        batchCode: newBatchCode,
+        mfgDate: newMfgDate,
+        expiryDate: newExpiryDate,
         variants: [
           {
             weight: '250g',
@@ -200,10 +218,14 @@ export default function AdminDashboard() {
       };
 
       await API.post('/products', payload);
+      const freshDates = getDefaultBatchDates();
       setShowAddModal(false);
       setNewProductName('');
       setNewProductDesc('');
       setNewProductImage('');
+      setNewBatchCode(freshDates.batch);
+      setNewMfgDate(freshDates.today);
+      setNewExpiryDate(freshDates.expiry);
       fetchDashboardData();
     } catch (error) {
       alert(error.response?.data?.message || 'Failed to add new pickle variety');
@@ -211,6 +233,7 @@ export default function AdminDashboard() {
   };
 
   const openEditModal = (prod) => {
+    const freshDates = getDefaultBatchDates();
     const v250 = prod.variants?.find((v) => v.weight === '250g') || prod.variants?.[0] || {
       weight: '250g',
       originalPrice: 350,
@@ -230,6 +253,9 @@ export default function AdminDashboard() {
       description: prod.description,
       image: prod.images?.[0] || '',
       spiceLevel: prod.spiceLevel || 'Medium',
+      batchCode: prod.batchCode || freshDates.batch,
+      mfgDate: prod.mfgDate || freshDates.today,
+      expiryDate: prod.expiryDate || freshDates.expiry,
       price250: v250.price,
       orig250: v250.originalPrice || v250.price + 50,
       stock250: v250.stock !== undefined ? v250.stock : 25,
@@ -249,6 +275,9 @@ export default function AdminDashboard() {
         description: editingProduct.description,
         image: editingProduct.image,
         spiceLevel: editingProduct.spiceLevel,
+        batchCode: editingProduct.batchCode,
+        mfgDate: editingProduct.mfgDate,
+        expiryDate: editingProduct.expiryDate,
         variants: [
           {
             weight: '250g',
@@ -419,7 +448,7 @@ export default function AdminDashboard() {
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
               <h1 className="text-2xl font-black text-gray-900">Admin Control Center</h1>
-              <p className="text-xs text-gray-500">Manage store orders, stock inventory, courier tracking & coupons</p>
+              <p className="text-xs text-gray-500">Manage store orders, stock inventory, batch expiry, courier tracking & coupons</p>
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
@@ -752,8 +781,8 @@ export default function AdminDashboard() {
           <div className="space-y-6">
             <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-gray-200">
               <div>
-                <h3 className="font-bold text-gray-900 text-sm">Active Store Catalog & Stock</h3>
-                <p className="text-xs text-gray-500">Edit pricing or replenish jar stock counts anytime</p>
+                <h3 className="font-bold text-gray-900 text-sm">Active Store Catalog, Batch & Stock</h3>
+                <p className="text-xs text-gray-500">Edit pricing, batch dates, or replenish jar stock counts anytime</p>
               </div>
               <button
                 onClick={() => setShowAddModal(true)}
@@ -779,7 +808,7 @@ export default function AdminDashboard() {
                       <button
                         onClick={() => openEditModal(prod)}
                         className="text-blue-700 hover:text-blue-900 p-1.5 bg-blue-50 rounded-lg transition"
-                        title="Edit Price & Stock"
+                        title="Edit Price, Batch & Stock"
                       >
                         <Edit2 size={15} />
                       </button>
@@ -793,6 +822,12 @@ export default function AdminDashboard() {
                     </div>
                   </div>
                   <p className="text-xs text-gray-500 line-clamp-2">{prod.description}</p>
+
+                  {/* FSSAI Batch & Expiry Pill */}
+                  <div className="bg-amber-50/80 border border-amber-200 rounded-xl px-3 py-1.5 flex items-center justify-between text-[10px] font-bold text-gray-700">
+                    <span className="font-mono text-red-900">{prod.batchCode || 'BATCH-2026-A'}</span>
+                    <span>Exp: {prod.expiryDate || '4 Months'}</span>
+                  </div>
                   
                   <div className="pt-2 border-t border-gray-100 space-y-1.5">
                     {prod.variants?.map((v, i) => {
@@ -891,7 +926,7 @@ export default function AdminDashboard() {
         {/* ADD PRODUCT MODAL */}
         {showAddModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-3xl p-6 max-w-md w-full space-y-4 shadow-xl">
+            <div className="bg-white rounded-3xl p-6 max-w-md w-full space-y-4 shadow-xl max-h-[92vh] overflow-y-auto">
               <h3 className="text-lg font-black text-gray-900">Add New Pickle Variety</h3>
               <form onSubmit={handleAddProduct} className="space-y-3">
                 <div>
@@ -942,6 +977,41 @@ export default function AdminDashboard() {
                     </select>
                   </div>
                 </div>
+
+                {/* Batch Code, MFG & Expiry Dates */}
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="text-[11px] font-bold text-gray-700 block mb-1">Batch Code</label>
+                    <input
+                      type="text"
+                      required
+                      value={newBatchCode}
+                      onChange={(e) => setNewBatchCode(e.target.value.toUpperCase())}
+                      className="w-full text-xs p-2 border border-gray-300 rounded-xl text-black bg-white font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-gray-700 block mb-1">MFG Date</label>
+                    <input
+                      type="date"
+                      required
+                      value={newMfgDate}
+                      onChange={(e) => setNewMfgDate(e.target.value)}
+                      className="w-full text-xs p-2 border border-gray-300 rounded-xl text-black bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-gray-700 block mb-1">Expiry Date</label>
+                    <input
+                      type="date"
+                      required
+                      value={newExpiryDate}
+                      onChange={(e) => setNewExpiryDate(e.target.value)}
+                      className="w-full text-xs p-2 border border-gray-300 rounded-xl text-black bg-white"
+                    />
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="text-xs font-bold text-gray-700 block mb-1">250g Price (₹)</label>
@@ -1008,12 +1078,12 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* EDIT PRODUCT & STOCK MODAL */}
+        {/* EDIT PRODUCT, BATCH & STOCK MODAL */}
         {editingProduct && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-3xl p-6 max-w-md w-full space-y-4 shadow-xl">
+            <div className="bg-white rounded-3xl p-6 max-w-md w-full space-y-4 shadow-xl max-h-[92vh] overflow-y-auto">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-black text-gray-900">Edit Pickle & Stock</h3>
+                <h3 className="text-lg font-black text-gray-900">Edit Pickle, Batch & Stock</h3>
                 <button
                   onClick={() => setEditingProduct(null)}
                   className="text-gray-400 hover:text-gray-600"
@@ -1068,6 +1138,43 @@ export default function AdminDashboard() {
                     </select>
                   </div>
                 </div>
+
+                {/* Batch Code, MFG & Expiry Dates */}
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="text-[11px] font-bold text-gray-700 block mb-1">Batch Code</label>
+                    <input
+                      type="text"
+                      required
+                      value={editingProduct.batchCode}
+                      onChange={(e) =>
+                        setEditingProduct({ ...editingProduct, batchCode: e.target.value.toUpperCase() })
+                      }
+                      className="w-full text-xs p-2 border border-gray-300 rounded-xl text-black bg-white font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-gray-700 block mb-1">MFG Date</label>
+                    <input
+                      type="date"
+                      required
+                      value={editingProduct.mfgDate}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, mfgDate: e.target.value })}
+                      className="w-full text-xs p-2 border border-gray-300 rounded-xl text-black bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-gray-700 block mb-1">Expiry Date</label>
+                    <input
+                      type="date"
+                      required
+                      value={editingProduct.expiryDate}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, expiryDate: e.target.value })}
+                      className="w-full text-xs p-2 border border-gray-300 rounded-xl text-black bg-white"
+                    />
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="text-xs font-bold text-gray-700 block mb-1">250g Price (₹)</label>
@@ -1252,7 +1359,7 @@ export default function AdminDashboard() {
                   <span className="text-gray-500 flex items-center gap-1.5">
                     <Shield size={14} className="text-red-800" /> Access Privileges:
                   </span>
-                  <span className="font-bold text-green-700">Orders, Products, Stock & Status Control</span>
+                  <span className="font-bold text-green-700">Orders, Products, Stock, Batch & Status Control</span>
                 </div>
               </div>
 

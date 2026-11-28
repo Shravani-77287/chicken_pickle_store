@@ -298,8 +298,43 @@ export default function ProductDetailPage() {
           <div className="bg-white rounded-2xl p-5 border border-amber-200 space-y-3">
             <div className="space-y-1">
               <h3 className="text-sm font-black text-gray-900 flex items-center gap-2">
-                <Clock size={16} className="text-red-800" /> Shelf Life & Storage
+                <Clock size={16} className="text-red-800" /> Batch Freshness & Shelf Life
               </h3>
+
+              {/* FSSAI Batch, MFG & Expiry Pill Row */}
+              <div className="grid grid-cols-3 gap-2 py-2">
+                <div className="bg-amber-50/80 border border-amber-200 rounded-xl p-2">
+                  <span className="text-[10px] font-bold text-gray-500 uppercase block">Batch No.</span>
+                  <span className="text-[11px] font-mono font-black text-gray-900">
+                    {product.batchCode || 'BATCH-2026-A'}
+                  </span>
+                </div>
+                <div className="bg-amber-50/80 border border-amber-200 rounded-xl p-2">
+                  <span className="text-[10px] font-bold text-gray-500 uppercase block">Packed On</span>
+                  <span className="text-[11px] font-black text-gray-900">
+                    {product.mfgDate
+                      ? new Date(product.mfgDate).toLocaleDateString('en-IN', {
+                          day: '2-digit',
+                          month: 'short',
+                          year: 'numeric',
+                        })
+                      : 'Fresh Batch'}
+                  </span>
+                </div>
+                <div className="bg-emerald-50/80 border border-emerald-200 rounded-xl p-2">
+                  <span className="text-[10px] font-bold text-emerald-800 uppercase block">Best Before</span>
+                  <span className="text-[11px] font-black text-emerald-900">
+                    {product.expiryDate
+                      ? new Date(product.expiryDate).toLocaleDateString('en-IN', {
+                          day: '2-digit',
+                          month: 'short',
+                          year: 'numeric',
+                        })
+                      : '4 Months'}
+                  </span>
+                </div>
+              </div>
+
               <p className="text-xs font-bold text-gray-800">{product.shelfLife}</p>
               <p className="text-xs text-gray-600">{product.storageInstructions}</p>
             </div>

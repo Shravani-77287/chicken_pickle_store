@@ -52,7 +52,7 @@ router.get('/:slug', async (req, res) => {
   }
 });
 
-// POST /api/products - Admin: Add new product with variant stock
+// POST /api/products - Admin: Add new product with batch & stock
 router.post('/', requireAdmin, async (req, res) => {
   try {
     const {
@@ -63,6 +63,9 @@ router.post('/', requireAdmin, async (req, res) => {
       images,
       spiceLevel,
       variants,
+      batchCode,
+      mfgDate,
+      expiryDate,
       ingredients,
       allergens,
       shelfLife,
@@ -94,6 +97,9 @@ router.post('/', requireAdmin, async (req, res) => {
       images: imageList,
       spiceLevel: spiceLevel || 'Medium',
       variants: formattedVariants,
+      ...(batchCode && { batchCode: batchCode.trim().toUpperCase() }),
+      ...(mfgDate && { mfgDate }),
+      ...(expiryDate && { expiryDate }),
       ...(ingredients && { ingredients }),
       ...(allergens && { allergens }),
       ...(shelfLife && { shelfLife }),
@@ -108,7 +114,7 @@ router.post('/', requireAdmin, async (req, res) => {
   }
 });
 
-// PUT /api/products/:id - Admin: Edit product details, prices & stock
+// PUT /api/products/:id - Admin: Edit product details, batch dates, prices & stock
 router.put('/:id', requireAdmin, async (req, res) => {
   try {
     const {
@@ -118,6 +124,9 @@ router.put('/:id', requireAdmin, async (req, res) => {
       images,
       spiceLevel,
       variants,
+      batchCode,
+      mfgDate,
+      expiryDate,
       ingredients,
       shelfLife,
       fssaiNumber,
@@ -133,6 +142,10 @@ router.put('/:id', requireAdmin, async (req, res) => {
     if (spiceLevel) product.spiceLevel = spiceLevel;
     if (images?.length) product.images = images;
     else if (image) product.images = [image];
+
+    if (batchCode !== undefined) product.batchCode = batchCode.trim().toUpperCase();
+    if (mfgDate !== undefined) product.mfgDate = mfgDate;
+    if (expiryDate !== undefined) product.expiryDate = expiryDate;
 
     if (Array.isArray(variants) && variants.length > 0) {
       product.variants = variants.map((v) => ({
