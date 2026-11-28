@@ -19,6 +19,8 @@ import {
   AlertTriangle,
   Truck,
   Share2,
+  CheckCircle2,
+  MessageSquare,
 } from 'lucide-react';
 
 export default function ProductDetailPage() {
@@ -28,24 +30,38 @@ export default function ProductDetailPage() {
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
 
+  // Reviews State
+  const [reviews, setReviews] = useState([]);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [rating, setRating] = useState(5);
+  const [comment, setComment] = useState('');
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [reviewMessage, setReviewMessage] = useState('');
+  const [reviewError, setReviewError] = useState('');
+
   const { totalItems, setIsCartOpen, addToCart } = useCart();
 
-  useEffect(() => {
-    if (!slug) return;
-    const fetchProduct = async () => {
-      try {
-        const res = await API.get(`/products/${slug}`);
-        setProduct(res.data);
-        if (res.data.variants?.length > 0) {
-          setSelectedVariant(res.data.variants[0]);
-        }
-      } catch (error) {
-        console.error('Failed to load product:', error);
-      } finally {
-        setLoading(false);
+  const fetchProductAndReviews = async () => {
+    try {
+      const res = await API.get(`/products/${slug}`);
+      setProduct(res.data);
+      if (res.data.variants?.length > 0) {
+        setSelectedVariant((prev) => prev || res.data.variants[0]);
       }
-    };
-    fetchProduct();
+
+      const reviewsRes = await API.get(`/reviews/${res.data._id}`).catch(() => ({ data: [] }));
+      setReviews(reviewsRes.data);
+    } catch (error) {
+      console.error('Failed to load product:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    setIsLoggedIn(Boolean(localStorage.getItem('customer_token')));
+    if (!slug) return;
+    fetchProductAndReviews();
   }, [slug]);
 
   const handleShare = () => {
@@ -53,6 +69,29 @@ export default function ProductDetailPage() {
       navigator.clipboard.writeText(window.location.href);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleReviewSubmit = async (e) => {
+    e.preventDefault();
+    if (!product?._id || !comment.trim()) return;
+
+    setSubmittingReview(true);
+    setReviewError('');
+    setReviewMessage('');
+
+    try {
+      await API.post(`/reviews/${product._id}`, {
+        rating,
+        comment,
+      });
+      setComment('');
+      setReviewMessage('Thank you! Your review has been published.');
+      await fetchProductAndReviews();
+    } catch (err) {
+      setReviewError(err.response?.data?.message || 'Failed to submit review');
+    } finally {
+      setSubmittingReview(false);
     }
   };
 
@@ -126,10 +165,8 @@ export default function ProductDetailPage() {
           {/* Info & Variant Selection Column */}
           <div className="flex flex-col justify-between space-y-5">
             <div className="space-y-3">
-              {/* FSSAI Non-Veg Symbol + Rating + Share */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
-                  {/* Mandatory Indian Non-Vegetarian Mark */}
                   <span
                     title="Non-Vegetarian Product"
                     className="w-5 h-5 border-2 border-red-700 flex items-center justify-center rounded-sm bg-white"
@@ -155,7 +192,7 @@ export default function ProductDetailPage() {
               <div className="flex items-center gap-1.5 text-amber-500 text-xs font-bold">
                 <Star size={15} fill="currentColor" />
                 <span>
-                  {product.rating || 4.8} ({product.numReviews || 12} verified ratings)
+                  {product.rating || 4.8} ({reviews.length > 0 ? reviews.length : product.numReviews || 12} ratings)
                 </span>
               </div>
 
@@ -208,18 +245,35 @@ export default function ProductDetailPage() {
                   </div>
                 </div>
 
-                <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
-                  Fresh Batch Available
+                <span
+                  className={`text-xs font-bold px-3 py-1 rounded-full border ${
+                    selectedVariant?.stock !== undefined && selectedVariant.stock <= 0
+                      ? 'text-red-700 bg-red-50 border-red-200'
+                      : 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                  }`}
+                >
+                  {selectedVariant?.stock !== undefined && selectedVariant.stock <= 0
+                    ? 'Out of Stock'
+                    : 'Fresh Batch Available'}
                 </span>
               </div>
 
-              <button
-                onClick={() => addToCart(product, selectedVariant)}
-                className="w-full bg-red-800 hover:bg-red-900 text-white font-black py-3.5 rounded-2xl text-sm transition flex items-center justify-center gap-2 shadow-md"
-              >
-                <ShoppingBag size={18} />
-                <span>Add {selectedVariant?.weight} Jar to Cart — ₹{offerPrice}</span>
-              </button>
+              {selectedVariant?.stock !== undefined && selectedVariant.stock <= 0 ? (
+                <button
+                  disabled
+                  className="w-full bg-gray-200 text-gray-500 font-black py-3.5 rounded-2xl text-sm cursor-not-allowed"
+                >
+                  Currently Out of Stock
+                </button>
+              ) : (
+                <button
+                  onClick={() => addToCart(product, selectedVariant)}
+                  className="w-full bg-red-800 hover:bg-red-900 text-white font-black py-3.5 rounded-2xl text-sm transition flex items-center justify-center gap-2 shadow-md"
+                >
+                  <ShoppingBag size={18} />
+                  <span>Add {selectedVariant?.weight} Jar to Cart — ₹{offerPrice}</span>
+                </button>
+              )}
 
               <div className="flex items-center gap-2 text-[11px] text-gray-500 font-medium">
                 <Truck size={14} className="text-emerald-600 shrink-0" />
@@ -262,6 +316,128 @@ export default function ProductDetailPage() {
               <span>FSSAI License: {product.fssaiNumber}</span>
             </div>
           </div>
+        </div>
+
+        {/* Customer Ratings & Reviews Section */}
+        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-amber-200 shadow-sm space-y-6">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-4">
+            <div>
+              <h3 className="text-lg font-black text-gray-900 flex items-center gap-2">
+                <MessageSquare size={18} className="text-red-800" /> Customer Reviews ({reviews.length})
+              </h3>
+              <p className="text-xs text-gray-500">Honest feedback from pickle lovers</p>
+            </div>
+            <div className="flex items-center gap-1.5 bg-amber-50 border border-amber-200 px-3.5 py-2 rounded-2xl">
+              <Star size={16} className="text-amber-500" fill="currentColor" />
+              <span className="text-sm font-black text-gray-900">{product.rating || 4.8} / 5</span>
+            </div>
+          </div>
+
+          {/* Write a Review Form */}
+          {isLoggedIn ? (
+            <form onSubmit={handleReviewSubmit} className="bg-amber-50/60 p-4 rounded-2xl border border-amber-200 space-y-3">
+              <span className="text-xs font-black text-gray-900 block">Rate & Review this Pickle</span>
+
+              {reviewError && (
+                <p className="text-xs font-bold text-red-700 bg-red-50 p-2.5 rounded-xl border border-red-200">
+                  {reviewError}
+                </p>
+              )}
+              {reviewMessage && (
+                <p className="text-xs font-bold text-emerald-800 bg-emerald-50 p-2.5 rounded-xl border border-emerald-200">
+                  {reviewMessage}
+                </p>
+              )}
+
+              {/* 1-5 Star Picker */}
+              <div className="flex items-center gap-1.5">
+                {[1, 2, 3, 4, 5].map((starValue) => (
+                  <button
+                    key={starValue}
+                    type="button"
+                    onClick={() => setRating(starValue)}
+                    className="p-1 transition hover:scale-110"
+                  >
+                    <Star
+                      size={22}
+                      className={starValue <= rating ? 'text-amber-500' : 'text-gray-300'}
+                      fill={starValue <= rating ? 'currentColor' : 'none'}
+                    />
+                  </button>
+                ))}
+                <span className="text-xs font-bold text-gray-600 ml-2">{rating} out of 5</span>
+              </div>
+
+              <textarea
+                rows="2"
+                required
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                placeholder="How was the spice level, chicken tenderness, and oil aroma?"
+                className="w-full p-3 text-xs bg-white border border-amber-200 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-800"
+              />
+
+              <button
+                type="submit"
+                disabled={submittingReview}
+                className="bg-red-800 hover:bg-red-900 text-white text-xs font-bold px-5 py-2.5 rounded-xl transition disabled:opacity-50"
+              >
+                {submittingReview ? 'Submitting...' : 'Submit Review'}
+              </button>
+            </form>
+          ) : (
+            <div className="bg-gray-50 p-4 rounded-2xl border border-gray-200 flex flex-wrap items-center justify-between gap-2 text-xs">
+              <span className="font-semibold text-gray-700">
+                Ordered this pickle? Sign in to share your rating and review.
+              </span>
+              <Link
+                href="/login"
+                className="bg-red-800 text-white font-bold px-4 py-2 rounded-xl hover:bg-red-900 transition"
+              >
+                Sign In to Review
+              </Link>
+            </div>
+          )}
+
+          {/* Reviews List */}
+          {reviews.length === 0 ? (
+            <p className="text-xs text-gray-500 text-center py-4">
+              No written reviews yet. Be the first to review this batch!
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {reviews.map((rev) => (
+                <div key={rev._id} className="p-4 rounded-2xl border border-gray-100 bg-gray-50/60 space-y-1.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black text-gray-900">{rev.userName}</span>
+                      {rev.isVerifiedPurchase && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full">
+                          <CheckCircle2 size={11} /> Verified Purchase
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[10px] text-gray-400">
+                      {new Date(rev.createdAt).toLocaleDateString('en-IN')}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-0.5 text-amber-500">
+                    {[1, 2, 3, 4, 5].map((s) => (
+                      <Star
+                        key={s}
+                        size={13}
+                        fill={s <= rev.rating ? 'currentColor' : 'none'}
+                        className={s <= rev.rating ? 'text-amber-500' : 'text-gray-300'}
+                      />
+                    ))}
+                  </div>
+
+                  <p className="text-xs text-gray-700 leading-relaxed pt-0.5">{rev.comment}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </main>
