@@ -124,8 +124,13 @@ export default function AdminDashboard() {
   };
 
   const handleStatusChange = async (orderId, newStatus) => {
+    const draft = trackingDrafts[orderId] || {};
     try {
-      await API.put(`/orders/${orderId}/status`, { status: newStatus });
+      await API.put(`/orders/${orderId}/status`, {
+        status: newStatus,
+        ...(draft.courierPartner !== undefined && { courierPartner: draft.courierPartner }),
+        ...(draft.trackingId !== undefined && { trackingId: draft.trackingId }),
+      });
       fetchDashboardData();
     } catch (error) {
       alert('Failed to update order status');

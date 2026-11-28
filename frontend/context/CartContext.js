@@ -6,8 +6,8 @@ import { usePathname } from 'next/navigation';
 
 const CartContext = createContext();
 
-const getCartStorageKey = () => {
-  if (typeof window === 'undefined') return 'pickle_cart_guest';
+const getLoggedInUserId = () => {
+  if (typeof window === 'undefined') return null;
   try {
     const rawUser = localStorage.getItem('customer_user');
     if (rawUser) {
@@ -15,18 +15,27 @@ const getCartStorageKey = () => {
       const user = parsed?.user || parsed;
       const uniqueId = user?._id || user?.id || user?.email;
       if (uniqueId) {
-        return `pickle_cart_${String(uniqueId).toLowerCase().trim()}`;
+        return String(uniqueId).toLowerCase().trim();
       }
     }
   } catch (e) {}
-  return 'pickle_cart_guest';
+  return null;
 };
 
 const writeCartToStorage = (items) => {
   if (typeof window === 'undefined') return;
   try {
+    // Clean up any legacy shared keys
     localStorage.removeItem('pickle_cart');
-    localStorage.setItem(getCartStorageKey(), JSON.stringify(items));
+    localStorage.removeItem('pickle_cart_guest');
+
+    const userId = getLoggedInUserId();
+    if (userId) {
+      localStorage.setItem(`pickle_cart_${userId}`, JSON.stringify(items));
+    } else {
+      // Guest cart stays only for the active browser tab session
+      sessionStorage.setItem('pickle_cart_guest_session', JSON.stringify(items));
+    }
   } catch (e) {
     console.error('Cart save error:', e);
   }
@@ -41,9 +50,16 @@ export function CartProvider({ children }) {
     if (typeof window === 'undefined') return;
     try {
       localStorage.removeItem('pickle_cart');
-      const key = getCartStorageKey();
-      const saved = localStorage.getItem(key);
-      setCartItems(saved ? JSON.parse(saved) : []);
+      localStorage.removeItem('pickle_cart_guest');
+
+      const userId = getLoggedInUserId();
+      if (userId) {
+        const saved = localStorage.getItem(`pickle_cart_${userId}`);
+        setCartItems(saved ? JSON.parse(saved) : []);
+      } else {
+        const guestSaved = sessionStorage.getItem('pickle_cart_guest_session');
+        setCartItems(guestSaved ? JSON.parse(guestSaved) : []);
+      }
     } catch (e) {
       setCartItems([]);
     }

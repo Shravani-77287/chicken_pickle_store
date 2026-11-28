@@ -24,7 +24,7 @@ export default function TrackOrderPage() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [copiedId, setCopiedId] = useState('');
+  const [copiedKey, setCopiedKey] = useState('');
 
   const handleTrack = async (e) => {
     e.preventDefault();
@@ -44,10 +44,10 @@ export default function TrackOrderPage() {
     }
   };
 
-  const handleCopyTracking = (trackingId) => {
-    navigator.clipboard.writeText(trackingId);
-    setCopiedId(trackingId);
-    setTimeout(() => setCopiedId(''), 2000);
+  const handleCopy = (value, key) => {
+    navigator.clipboard.writeText(value);
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(''), 2000);
   };
 
   return (
@@ -112,6 +112,7 @@ export default function TrackOrderPage() {
         <div className="space-y-4">
           {orders.map((order) => {
             const currentStepIndex = STEPS.indexOf(order.status);
+            const hasCourierInfo = Boolean(order.courierPartner || order.trackingId);
 
             return (
               <div
@@ -120,10 +121,29 @@ export default function TrackOrderPage() {
               >
                 <div className="flex flex-wrap justify-between items-start gap-2 border-b border-gray-100 pb-3">
                   <div>
-                    <span className="text-xs font-black text-gray-900">
-                      Order #{order._id.slice(-6).toUpperCase()}
-                    </span>
-                    <p className="text-[11px] text-gray-500 mt-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black text-gray-900">
+                        Order #{order._id.slice(-6).toUpperCase()}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(order._id, `order-${order._id}`)}
+                        className="text-[10px] font-bold text-gray-600 hover:text-red-800 bg-gray-100 px-2 py-0.5 rounded-md inline-flex items-center gap-1 transition"
+                      >
+                        {copiedKey === `order-${order._id}` ? (
+                          <>
+                            <Check size={11} className="text-emerald-600" />
+                            <span>Copied</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy size={11} />
+                            <span>Copy Order ID</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-gray-500 mt-1">
                       Placed on {new Date(order.createdAt).toLocaleString('en-IN')}
                     </p>
                   </div>
@@ -171,7 +191,7 @@ export default function TrackOrderPage() {
                 )}
 
                 {/* Courier Partner & Tracking ID Box */}
-                {(order.courierPartner || order.trackingId) && (
+                {hasCourierInfo ? (
                   <div className="bg-blue-50/80 border border-blue-200 p-3.5 rounded-2xl flex flex-wrap items-center justify-between gap-2 text-xs">
                     <div>
                       <span className="text-[10px] font-black text-blue-800 uppercase block">
@@ -188,12 +208,12 @@ export default function TrackOrderPage() {
                     {order.trackingId && (
                       <button
                         type="button"
-                        onClick={() => handleCopyTracking(order.trackingId)}
+                        onClick={() => handleCopy(order.trackingId, `track-${order._id}`)}
                         className="bg-white border border-blue-200 text-blue-800 font-bold text-[11px] px-3 py-1.5 rounded-xl flex items-center gap-1 hover:bg-blue-100 transition"
                       >
-                        {copiedId === order.trackingId ? (
+                        {copiedKey === `track-${order._id}` ? (
                           <>
-                            <Check size={13} />
+                            <Check size={13} className="text-emerald-600" />
                             <span>Copied</span>
                           </>
                         ) : (
@@ -205,6 +225,12 @@ export default function TrackOrderPage() {
                       </button>
                     )}
                   </div>
+                ) : (
+                  order.status === 'Out for Delivery' && (
+                    <div className="bg-amber-50 border border-amber-200 p-3 rounded-2xl text-[11px] text-amber-900 font-semibold">
+                      🚚 Dispatched for delivery! Courier AWB tracking ID will appear here once updated by the store.
+                    </div>
+                  )
                 )}
 
                 {/* Items & Address */}
