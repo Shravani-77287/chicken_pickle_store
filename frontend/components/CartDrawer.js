@@ -22,7 +22,7 @@ import {
   Loader2,
   Check,
   Tag,
-  MessageCircle
+  MessageCircle,
 } from 'lucide-react';
 
 const loadRazorpaySDK = () => {
@@ -54,7 +54,7 @@ function CartDrawer() {
   const [loading, setLoading] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState(false);
   const [lastOrderDetails, setLastOrderDetails] = useState(null);
-  
+
   // Coupon States
   const [couponCode, setCouponCode] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState(null);
@@ -90,6 +90,7 @@ function CartDrawer() {
   useEffect(() => {
     if (items.length > 0 && orderSuccess) {
       setOrderSuccess(false);
+      setLastOrderDetails(null);
     }
   }, [items.length, orderSuccess]);
 
@@ -121,6 +122,7 @@ function CartDrawer() {
 
   const handleCloseDrawer = () => {
     setOrderSuccess(false);
+    setLastOrderDetails(null);
     setIsCartOpen(false);
   };
 
@@ -215,9 +217,20 @@ function CartDrawer() {
         couponCode: appliedCoupon ? appliedCoupon.code : '',
       };
 
+      const orderSummaryText = items
+        .map((i) => `${i.quantity}x ${i.name} (${i.selectedVariant?.weight})`)
+        .join(', ');
+
       // CASH ON DELIVERY
       if (paymentMethod === 'Cash on Delivery (COD)') {
-        await API.post('/orders', orderPayload);
+        const { data: createdOrder } = await API.post('/orders', orderPayload);
+        setLastOrderDetails({
+          id: createdOrder._id,
+          items: orderSummaryText,
+          total: createdOrder.totalPrice || grandTotal,
+          paymentMethod,
+          customer: { ...customer },
+        });
         setOrderSuccess(true);
         setAppliedCoupon(null);
         clearCart();
@@ -235,6 +248,8 @@ function CartDrawer() {
 
       const { data: rzpOrder } = await API.post('/payment/create-order', {
         amount: grandTotal,
+        orderItems: orderPayload.orderItems,
+        couponCode: orderPayload.couponCode,
       });
 
       const options = {
@@ -259,7 +274,7 @@ function CartDrawer() {
               razorpay_signature: response.razorpay_signature,
             });
 
-            await API.post('/orders', {
+            const { data: createdOrder } = await API.post('/orders', {
               ...orderPayload,
               paymentResult: {
                 id: response.razorpay_payment_id,
@@ -267,6 +282,13 @@ function CartDrawer() {
               },
             });
 
+            setLastOrderDetails({
+              id: createdOrder._id,
+              items: orderSummaryText,
+              total: createdOrder.totalPrice || grandTotal,
+              paymentMethod,
+              customer: { ...customer },
+            });
             setOrderSuccess(true);
             setAppliedCoupon(null);
             clearCart();
@@ -325,16 +347,44 @@ function CartDrawer() {
               We have received your order for fresh homestyle chicken pickle. Track live updates using{' '}
               <span className="text-emerald-400 font-bold">{customer.phone}</span>.
             </p>
-            <button
-              onClick={() => {
-                setOrderSuccess(false);
-                setIsCartOpen(false);
-                router.push('/track');
-              }}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-3 rounded-2xl text-xs tracking-wider transition shadow-lg mt-4"
-            >
-              Track Order Live 🚚
-            </button>
+
+            <div className="flex flex-col w-full max-w-xs gap-2.5 pt-2">
+              {lastOrderDetails && (
+                <a
+                  href={`https://wa.me/${
+                    process.env.NEXT_PUBLIC_OWNER_WHATSAPP || '919876543210'
+                  }?text=${encodeURIComponent(
+                    `Hi Chicken Pickle Store! 🌶️ I just placed an order:\nOrder ID: #${lastOrderDetails.id
+                      ?.slice(-6)
+                      .toUpperCase()}\nItems: ${lastOrderDetails.items}\nTotal: ₹${
+                      lastOrderDetails.total
+                    } (${lastOrderDetails.paymentMethod})\nName: ${
+                      lastOrderDetails.customer.name
+                    } (${lastOrderDetails.customer.phone})\nAddress: ${
+                      lastOrderDetails.customer.address
+                    } - ${lastOrderDetails.customer.pincode}`
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-[#25D366] hover:bg-[#1ebe5d] text-black font-black px-6 py-3 rounded-2xl text-xs tracking-wider transition shadow-lg flex items-center justify-center gap-2"
+                >
+                  <MessageCircle size={16} />
+                  <span>Send Order on WhatsApp</span>
+                </a>
+              )}
+
+              <button
+                onClick={() => {
+                  setOrderSuccess(false);
+                  setLastOrderDetails(null);
+                  setIsCartOpen(false);
+                  router.push('/track');
+                }}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-3 rounded-2xl text-xs tracking-wider transition shadow-lg"
+              >
+                Track Order Live 🚚
+              </button>
+            </div>
           </div>
         ) : items.length === 0 ? (
           <div className="flex-1 p-8 text-center flex flex-col items-center justify-center space-y-3">
