@@ -1,7 +1,7 @@
 // frontend/app/layout.js
 import './globals.css';
 import { CartProvider } from '../context/CartContext';
-
+import WhatsAppButton from '../components/WhatsAppButton';
 export const metadata = {
   title: 'Chicken Pickle Store',
   description: 'Authentic Homestyle Chicken Pickles',
@@ -13,6 +13,9 @@ export default function RootLayout({ children }) {
       <body>
         <CartProvider>
           {children}
+       
+    <WhatsAppButton />
+         
         </CartProvider>
       </body>
     </html>

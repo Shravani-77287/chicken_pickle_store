@@ -7,6 +7,7 @@ const Order = require('../models/Order');
 const Product = require('../models/Product');
 const Coupon = require('../models/Coupon');
 const User = require('../models/User');
+const { sendOrderEmail } = require('../utils/mailer');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'chicken_pickle_secret_key_2026';
 
@@ -167,6 +168,24 @@ router.post('/', async (req, res) => {
       }
     }
 
+    // Send confirmation email if user account has an email
+    if (userId) {
+      const orderUser = await User.findById(userId);
+      if (orderUser?.email) {
+        sendOrderEmail({
+          to: orderUser.email,
+          subject: `Order Confirmed #${order._id.toString().slice(-6).toUpperCase()} — Chicken Pickle Store 🌶️`,
+          html: `
+            <h2>Thank you for your order, ${order.customer.name}!</h2>
+            <p>We have started preparing your fresh batch of homestyle chicken pickle.</p>
+            <p><strong>Order Total:</strong> ₹${order.totalPrice} (${order.paymentMethod})</p>
+            <p><strong>Delivery Address:</strong> ${order.customer.address} - ${order.customer.pincode}</p>
+            <p>Track your order anytime using your phone number: <strong>${order.customer.phone}</strong>.</p>
+          `,
+        });
+      }
+    }
+
     res.status(201).json(order);
   } catch (error) {
     console.error('Create Order Error:', error);
@@ -284,6 +303,22 @@ router.put('/:id/status', requireAdmin, async (req, res) => {
     if (trackingId !== undefined) updateFields.trackingId = trackingId.trim();
 
     const order = await Order.findByIdAndUpdate(req.params.id, updateFields, { new: true });
+    
+    if (order?.user && status) {
+      const orderUser = await User.findById(order.user);
+      if (orderUser?.email) {
+        sendOrderEmail({
+          to: orderUser.email,
+          subject: `Order #${order._id.toString().slice(-6).toUpperCase()} is now ${order.status}`,
+          html: `
+            <h3>Hi ${order.customer.name},</h3>
+            <p>Your Chicken Pickle Store order status has been updated to: <strong>${order.status}</strong>.</p>
+            ${order.trackingId ? `<p><strong>Courier:</strong> ${order.courierPartner || 'Partner'} | <strong>Tracking ID:</strong> ${order.trackingId}</p>` : ''}
+          `,
+        });
+      }
+    }
+    
     res.json(order);
   } catch (error) {
     res.status(500).json({ message: 'Failed to update order' });

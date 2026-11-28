@@ -22,6 +22,7 @@ import {
   Loader2,
   Check,
   Tag,
+  MessageCircle
 } from 'lucide-react';
 
 const loadRazorpaySDK = () => {
@@ -52,7 +53,8 @@ function CartDrawer() {
   const [showAddressModal, setShowAddressModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState(false);
-
+  const [lastOrderDetails, setLastOrderDetails] = useState(null);
+  
   // Coupon States
   const [couponCode, setCouponCode] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState(null);
