@@ -76,7 +76,6 @@ router.post('/', async (req, res) => {
     let calculatedItemsPrice = 0;
     const verifiedItems = [];
 
-    // 1. Verify prices & check available stock from MongoDB
     for (const item of orderItems) {
       const qty = Math.max(1, Number(item.quantity) || 1);
       let unitPrice = Number(item.price) || 0;
@@ -111,7 +110,6 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // 2. Re-validate coupon server-side
     let discountPrice = 0;
     let appliedCode = '';
 
@@ -131,7 +129,6 @@ router.post('/', async (req, res) => {
       }
     }
 
-    // 3. Calculate shipping, handling & grand total
     const shippingPrice = calculatedItemsPrice >= 499 ? 0 : 30;
     const handlingPrice = 12;
     const totalPrice = Math.max(0, calculatedItemsPrice - discountPrice + shippingPrice + handlingPrice);
@@ -161,7 +158,6 @@ router.post('/', async (req, res) => {
       couponCode: appliedCode,
     });
 
-    // 4. Atomically deduct variant stock
     for (const item of verifiedItems) {
       if (item.product && mongoose.Types.ObjectId.isValid(item.product)) {
         await Product.updateOne(
@@ -220,7 +216,6 @@ router.put('/:id/cancel', requireCustomer, async (req, res) => {
     order.status = 'Cancelled';
     await order.save();
 
-    // Restore stock for cancelled items
     for (const item of order.orderItems || []) {
       if (item.product && mongoose.Types.ObjectId.isValid(item.product)) {
         await Product.updateOne(
@@ -264,19 +259,34 @@ router.get('/track/:identifier', async (req, res) => {
   }
 });
 
-// PUT /api/orders/:id/status - Admin: Update order status
+// PUT /api/orders/:id/status - Admin: Update status, courier partner & tracking ID
 router.put('/:id/status', requireAdmin, async (req, res) => {
   try {
-    const { status } = req.body;
-    const order = await Order.findByIdAndUpdate(
-      req.params.id,
-      { status },
-      { new: true }
-    );
-    if (!order) return res.status(404).json({ message: 'Order not found' });
+    const { status, courierPartner, trackingId } = req.body;
+    const existingOrder = await Order.findById(req.params.id);
+    if (!existingOrder) return res.status(404).json({ message: 'Order not found' });
+
+    // Restore stock if admin cancels an active order
+    if (status === 'Cancelled' && existingOrder.status !== 'Cancelled') {
+      for (const item of existingOrder.orderItems || []) {
+        if (item.product && mongoose.Types.ObjectId.isValid(item.product)) {
+          await Product.updateOne(
+            { _id: item.product, 'variants.weight': item.weight },
+            { $inc: { 'variants.$.stock': item.quantity } }
+          );
+        }
+      }
+    }
+
+    const updateFields = {};
+    if (status) updateFields.status = status;
+    if (courierPartner !== undefined) updateFields.courierPartner = courierPartner.trim();
+    if (trackingId !== undefined) updateFields.trackingId = trackingId.trim();
+
+    const order = await Order.findByIdAndUpdate(req.params.id, updateFields, { new: true });
     res.json(order);
   } catch (error) {
-    res.status(500).json({ message: 'Failed to update order status' });
+    res.status(500).json({ message: 'Failed to update order' });
   }
 });
 

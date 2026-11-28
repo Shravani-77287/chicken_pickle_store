@@ -1,7 +1,7 @@
 // frontend/app/admin/page.js
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import API from '../../lib/api';
@@ -25,6 +25,8 @@ import {
   X,
   Edit2,
   IndianRupee,
+  Search,
+  Download,
 } from 'lucide-react';
 
 export default function AdminDashboard() {
@@ -37,6 +39,9 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
   const [activeOrderTab, setActiveOrderTab] = useState('All');
+  const [orderSearch, setOrderSearch] = useState('');
+  const [trackingDrafts, setTrackingDrafts] = useState({});
+  const [savingTrackingId, setSavingTrackingId] = useState(null);
 
   // Add Product State
   const [showAddModal, setShowAddModal] = useState(false);
@@ -84,6 +89,16 @@ export default function AdminDashboard() {
       setOrders(ordersRes.data);
       setProducts(productsRes.data);
       setCoupons(couponsRes.data);
+
+      const drafts = {};
+      ordersRes.data.forEach((o) => {
+        drafts[o._id] = {
+          courierPartner: o.courierPartner || '',
+          trackingId: o.trackingId || '',
+        };
+      });
+      setTrackingDrafts(drafts);
+
       if (profileRes.data) {
         setAdminProfile(profileRes.data);
       }
@@ -114,6 +129,32 @@ export default function AdminDashboard() {
       fetchDashboardData();
     } catch (error) {
       alert('Failed to update order status');
+    }
+  };
+
+  const handleTrackingInput = (orderId, field, value) => {
+    setTrackingDrafts((prev) => ({
+      ...prev,
+      [orderId]: {
+        ...(prev[orderId] || { courierPartner: '', trackingId: '' }),
+        [field]: value,
+      },
+    }));
+  };
+
+  const handleSaveTracking = async (orderId) => {
+    const draft = trackingDrafts[orderId] || { courierPartner: '', trackingId: '' };
+    setSavingTrackingId(orderId);
+    try {
+      await API.put(`/orders/${orderId}/status`, {
+        courierPartner: draft.courierPartner,
+        trackingId: draft.trackingId,
+      });
+      await fetchDashboardData();
+    } catch (error) {
+      alert('Failed to save tracking details');
+    } finally {
+      setSavingTrackingId(null);
     }
   };
 
@@ -281,8 +322,88 @@ export default function AdminDashboard() {
   }, 0);
 
   const countByStatus = (status) => orders.filter((o) => o.status === status).length;
-  const filteredOrders =
-    activeOrderTab === 'All' ? orders : orders.filter((o) => o.status === activeOrderTab);
+
+  const filteredOrders = useMemo(() => {
+    const q = orderSearch.trim().toLowerCase();
+    return orders.filter((o) => {
+      const matchesTab = activeOrderTab === 'All' || o.status === activeOrderTab;
+      if (!matchesTab) return false;
+      if (!q) return true;
+
+      return (
+        o._id?.toLowerCase().includes(q) ||
+        o.customer?.name?.toLowerCase().includes(q) ||
+        o.customer?.phone?.toLowerCase().includes(q) ||
+        o.customer?.pincode?.toLowerCase().includes(q) ||
+        o.trackingId?.toLowerCase().includes(q)
+      );
+    });
+  }, [orders, activeOrderTab, orderSearch]);
+
+  // Free Client-Side CSV Export for Accounting & GST
+  const handleExportCSV = () => {
+    if (filteredOrders.length === 0) {
+      alert('No orders to export.');
+      return;
+    }
+
+    const escapeCsv = (val) => `"${String(val ?? '').replace(/"/g, '""')}"`;
+
+    const headers = [
+      'Order ID',
+      'Date',
+      'Customer Name',
+      'Phone',
+      'Address',
+      'Pincode',
+      'Items',
+      'Items Total (INR)',
+      'Discount (INR)',
+      'Shipping (INR)',
+      'Grand Total (INR)',
+      'Payment Method',
+      'Payment Status',
+      'Order Status',
+      'Courier Partner',
+      'Tracking ID',
+      'GSTIN',
+    ];
+
+    const rows = filteredOrders.map((o) => [
+      o._id,
+      o.createdAt ? new Date(o.createdAt).toLocaleString('en-IN') : '',
+      o.customer?.name || '',
+      o.customer?.phone || '',
+      o.customer?.address || '',
+      o.customer?.pincode || '',
+      (o.orderItems || []).map((i) => `${i.quantity}x ${i.name} (${i.weight})`).join('; '),
+      o.itemsPrice || 0,
+      o.discountPrice || 0,
+      o.shippingPrice || 0,
+      o.totalPrice || 0,
+      o.paymentMethod || '',
+      o.paymentStatus || '',
+      o.status || '',
+      o.courierPartner || '',
+      o.trackingId || '',
+      o.gstinNumber || '',
+    ]);
+
+    const csvContent =
+      'data:text/csv;charset=utf-8,' +
+      [headers.map(escapeCsv).join(','), ...rows.map((r) => r.map(escapeCsv).join(','))].join('\n');
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute(
+      'download',
+      `chicken-pickle-orders-${new Date().toISOString().slice(0, 10)}.csv`
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   return (
     <div className="min-h-screen bg-gray-100 p-4 sm:p-8">
@@ -293,7 +414,7 @@ export default function AdminDashboard() {
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
               <h1 className="text-2xl font-black text-gray-900">Admin Control Center</h1>
-              <p className="text-xs text-gray-500">Manage store orders, stock inventory, delivery updates & coupons</p>
+              <p className="text-xs text-gray-500">Manage store orders, stock inventory, courier tracking & coupons</p>
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
@@ -443,8 +564,39 @@ export default function AdminDashboard() {
 
         {/* VIEW 1: ORDERS DASHBOARD */}
         {activeView === 'orders' && (
-          <div className="space-y-6">
-            <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
+          <div className="space-y-4">
+            {/* Search & CSV Export Bar */}
+            <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
+              <div className="relative flex-1">
+                <Search size={15} className="absolute left-3.5 top-3 text-gray-400" />
+                <input
+                  type="text"
+                  value={orderSearch}
+                  onChange={(e) => setOrderSearch(e.target.value)}
+                  placeholder="Search orders by customer name, phone, PIN code, Order ID, or tracking ID..."
+                  className="w-full pl-9 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-800"
+                />
+                {orderSearch && (
+                  <button
+                    onClick={() => setOrderSearch('')}
+                    className="absolute right-2.5 top-2.5 text-gray-400 hover:text-gray-600"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+
+              <button
+                onClick={handleExportCSV}
+                className="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5 shrink-0"
+              >
+                <Download size={14} />
+                <span>Export CSV ({filteredOrders.length})</span>
+              </button>
+            </div>
+
+            {/* Status Tabs */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
               {[
                 { id: 'All', label: 'All Orders', count: orders.length, icon: Boxes },
                 { id: 'Preparing Batch', label: 'Preparing', count: countByStatus('Preparing Batch'), icon: Flame },
@@ -479,64 +631,112 @@ export default function AdminDashboard() {
               <div className="text-center py-12 text-gray-500 text-sm font-medium">Loading orders...</div>
             ) : filteredOrders.length === 0 ? (
               <div className="text-center py-16 bg-white rounded-2xl shadow-sm border border-gray-200 text-gray-500">
-                <p className="font-bold text-base text-gray-800 mb-1">No orders found in "{activeOrderTab}"</p>
+                <p className="font-bold text-base text-gray-800 mb-1">No matching orders found</p>
               </div>
             ) : (
               <div className="space-y-4">
-                {filteredOrders.map((order) => (
-                  <div key={order._id} className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200 flex flex-col lg:flex-row justify-between gap-6">
-                    <div className="space-y-2 max-w-sm">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-gray-900 text-base">{order.customer?.name}</span>
-                        <span className="text-xs text-gray-400">({order.createdAt ? new Date(order.createdAt).toLocaleDateString() : 'N/A'})</span>
-                      </div>
-                      <p className="text-xs text-gray-600 flex items-center gap-1.5">
-                        <Phone size={14} className="text-gray-400" />
-                        {order.customer?.phone}
-                      </p>
-                      <p className="text-xs text-gray-600 flex items-start gap-1.5">
-                        <MapPin size={14} className="text-gray-400 mt-0.5 shrink-0" />
-                        <span>{order.customer?.address} - <strong>{order.customer?.pincode}</strong></span>
-                      </p>
-                    </div>
+                {filteredOrders.map((order) => {
+                  const draft = trackingDrafts[order._id] || {
+                    courierPartner: order.courierPartner || '',
+                    trackingId: order.trackingId || '',
+                  };
 
-                    <div className="flex-1 space-y-2 border-t lg:border-t-0 lg:border-l border-gray-100 pt-4 lg:pt-0 lg:pl-6">
-                      <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Items Ordered</h4>
-                      <div className="space-y-1">
-                        {order.orderItems?.map((item, idx) => (
-                          <div key={idx} className="text-xs flex justify-between text-gray-800">
-                            <span><strong>{item.quantity}x</strong> {item.name} ({item.weight})</span>
-                            <span className="font-bold">₹{item.price * item.quantity}</span>
+                  return (
+                    <div key={order._id} className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200 flex flex-col lg:flex-row justify-between gap-6">
+                      {/* Customer & Address */}
+                      <div className="space-y-2 max-w-xs">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-mono font-bold bg-gray-100 text-gray-700 px-2 py-0.5 rounded">
+                            #{order._id.slice(-6).toUpperCase()}
+                          </span>
+                          <span className="font-bold text-gray-900 text-base">{order.customer?.name}</span>
+                        </div>
+                        <p className="text-[11px] text-gray-400">
+                          {order.createdAt ? new Date(order.createdAt).toLocaleString('en-IN') : 'N/A'}
+                        </p>
+                        <p className="text-xs text-gray-600 flex items-center gap-1.5">
+                          <Phone size={14} className="text-gray-400" />
+                          {order.customer?.phone}
+                        </p>
+                        <p className="text-xs text-gray-600 flex items-start gap-1.5">
+                          <MapPin size={14} className="text-gray-400 mt-0.5 shrink-0" />
+                          <span>{order.customer?.address} - <strong>{order.customer?.pincode}</strong></span>
+                        </p>
+                        {order.gstinNumber && (
+                          <p className="text-[11px] font-mono text-blue-700 bg-blue-50 px-2 py-0.5 rounded inline-block">
+                            GSTIN: {order.gstinNumber}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Ordered Items & Totals */}
+                      <div className="flex-1 space-y-2 border-t lg:border-t-0 lg:border-l border-gray-100 pt-4 lg:pt-0 lg:pl-6">
+                        <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Items Ordered</h4>
+                        <div className="space-y-1">
+                          {order.orderItems?.map((item, idx) => (
+                            <div key={idx} className="text-xs flex justify-between text-gray-800">
+                              <span><strong>{item.quantity}x</strong> {item.name} ({item.weight})</span>
+                              <span className="font-bold">₹{item.price * item.quantity}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="text-xs font-black text-red-800 pt-2 border-t border-gray-100 flex justify-between">
+                          <span>Total ({order.paymentMethod} • {order.paymentStatus}):</span>
+                          <span>₹{order.totalPrice}</span>
+                        </div>
+                      </div>
+
+                      {/* Status & Courier Tracking Controls */}
+                      <div className="flex flex-col justify-between gap-3 border-t lg:border-t-0 lg:border-l border-gray-100 pt-4 lg:pt-0 lg:pl-6 min-w-[230px]">
+                        <div>
+                          <label className="text-xs font-bold text-gray-700 block mb-1">Order Status</label>
+                          <select
+                            value={order.status}
+                            onChange={(e) => handleStatusChange(order._id, e.target.value)}
+                            className="text-xs font-bold p-2.5 border border-gray-300 rounded-xl bg-white text-black focus:outline-none focus:ring-2 focus:ring-red-800 cursor-pointer w-full"
+                          >
+                            <option value="Preparing Batch" className="text-black bg-white">Preparing Batch 🌶️</option>
+                            <option value="Packed" className="text-black bg-white">Packed 📦</option>
+                            <option value="Out for Delivery" className="text-black bg-white">Out for Delivery 🚚</option>
+                            <option value="Delivered" className="text-black bg-white">Delivered ✅</option>
+                            <option value="Cancelled" className="text-black bg-white">Cancelled ❌</option>
+                          </select>
+                        </div>
+
+                        {/* Courier Partner & Tracking ID */}
+                        <div className="bg-gray-50 p-2.5 rounded-xl border border-gray-200 space-y-2">
+                          <span className="text-[10px] font-black text-gray-600 uppercase block">
+                            Courier & Tracking ID
+                          </span>
+                          <input
+                            type="text"
+                            placeholder="Courier (e.g. DTDC / India Post)"
+                            value={draft.courierPartner}
+                            onChange={(e) => handleTrackingInput(order._id, 'courierPartner', e.target.value)}
+                            className="w-full text-[11px] p-2 border border-gray-300 rounded-lg bg-white text-black"
+                          />
+                          <div className="flex gap-1.5">
+                            <input
+                              type="text"
+                              placeholder="Tracking / AWB No."
+                              value={draft.trackingId}
+                              onChange={(e) => handleTrackingInput(order._id, 'trackingId', e.target.value)}
+                              className="flex-1 text-[11px] p-2 border border-gray-300 rounded-lg bg-white text-black font-mono"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleSaveTracking(order._id)}
+                              disabled={savingTrackingId === order._id}
+                              className="bg-gray-900 hover:bg-black text-white text-[11px] font-bold px-2.5 rounded-lg transition disabled:opacity-50"
+                            >
+                              {savingTrackingId === order._id ? '...' : 'Save'}
+                            </button>
                           </div>
-                        ))}
-                      </div>
-                      <div className="text-xs font-black text-red-800 pt-2 border-t border-gray-100 flex justify-between">
-                        <span>Total ({order.paymentMethod} • {order.paymentStatus}):</span>
-                        <span>₹{order.totalPrice}</span>
+                        </div>
                       </div>
                     </div>
-
-                    <div className="flex flex-col justify-between border-t lg:border-t-0 lg:border-l border-gray-100 pt-4 lg:pt-0 lg:pl-6">
-                      <div>
-                        <label className="text-xs font-bold text-gray-700 block mb-1">Update Status</label>
-                        <select
-                          value={order.status}
-                          onChange={(e) => handleStatusChange(order._id, e.target.value)}
-                          className="text-xs font-bold p-2.5 border border-gray-300 rounded-xl bg-white text-black focus:outline-none focus:ring-2 focus:ring-red-800 cursor-pointer w-full"
-                        >
-                          <option value="Preparing Batch" className="text-black bg-white">Preparing Batch 🌶️</option>
-                          <option value="Packed" className="text-black bg-white">Packed 📦</option>
-                          <option value="Out for Delivery" className="text-black bg-white">Out for Delivery 🚚</option>
-                          <option value="Delivered" className="text-black bg-white">Delivered ✅</option>
-                          <option value="Cancelled" className="text-black bg-white">Cancelled ❌</option>
-                        </select>
-                      </div>
-                      <div className="text-xs font-bold text-gray-700 flex items-center gap-1.5 mt-4">
-                        <span>Current: {order.status}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
